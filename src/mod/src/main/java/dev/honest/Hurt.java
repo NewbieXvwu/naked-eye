@@ -40,7 +40,14 @@ public final class Hurt {
         for (var el : Perception.entities(mc, p, mc.level, true)) onScreen.add(el.getAsJsonObject().get("id").getAsInt());
         String type = last.typeHolder().unwrapKey().map(k -> k.identifier().getPath()).orElse(last.getMsgId());
         Entity by = last.getEntity(), direct = last.getDirectEntity();
-        String who = by == null ? null : onScreen.contains(by.getId()) ? name(by) + " #" + by.getId() : "something I can't see";
+        Vec3 at = last.getSourcePosition();     // (none for falls, fire, hunger…: those come from nowhere in particular)
+        // not on screen: say which kind of unseen, as far as the side the hit came from tells it — off the edge of the
+        // screen (turn to look), or from the part I'm looking at but I can't make it out (dark? hidden? invisible?).
+        // A shooter is only "not in view": where the arrow came from isn't where the archer stands.
+        String who = by == null ? null : onScreen.contains(by.getId()) ? name(by) + " #" + by.getId()
+                   : direct != null && direct != by ? "something not in view"
+                   : at != null && inView(p, by.getBoundingBox()) ? "something right in front of me that I can't make out (too dark? behind a block? invisible?)"
+                   : "something off-screen";
         String what = SAY.get(type);
         if (what == null) {
             if (direct != null && direct != by)                         // arrow, trident, fireball, snowball…
@@ -49,7 +56,6 @@ public final class Hurt {
             else if (who != null) what = "hit by " + who;                // mob_attack, player_attack, …
             else what = type.replace('_', ' ');
         } else if (who != null && (type.contains("explosion") || type.equals("sting") || type.equals("thorns"))) what += " (" + who + ")";
-        Vec3 at = last.getSourcePosition();     // (none for falls, fire, hunger…: those come from nowhere in particular)
         if (at != null) {
             Vec3 d = at.subtract(p.getEyePosition());
             double rel = net.minecraft.util.Mth.wrapDegrees(Math.toDegrees(Math.atan2(-d.x, d.z)) - p.getYRot());
@@ -59,6 +65,21 @@ public final class Hurt {
         return what;
     }
 
+    /** is any of it (feet, middle, head) inside the frame of my screen? */
+    static boolean inView(net.minecraft.client.player.LocalPlayer p, net.minecraft.world.phys.AABB bb) {
+        Vec3 c = bb.getCenter();
+        for (double y : new double[]{bb.minY, c.y, bb.maxY}) if (inView(p, new Vec3(c.x, y, c.z))) return true;
+        return false;
+    }
+    static boolean inView(net.minecraft.client.player.LocalPlayer p, Vec3 at) {
+        var mc = Minecraft.getInstance();
+        Vec3 d = at.subtract(p.getEyePosition());
+        double halfV = mc.options.fov().get() / 2.0;
+        double halfH = Math.toDegrees(Math.atan(Math.tan(Math.toRadians(halfV)) * mc.getWindow().getWidth() / Math.max(1.0, mc.getWindow().getHeight())));
+        double b = net.minecraft.util.Mth.wrapDegrees(Math.toDegrees(Math.atan2(-d.x, d.z)) - p.getYRot());
+        double el = Math.toDegrees(Math.atan2(d.y, Math.hypot(d.x, d.z))) + p.getXRot();
+        return Math.abs(b) <= halfH && Math.abs(el) <= halfV;
+    }
     static String name(Entity e) { return a(BuiltInRegistries.ENTITY_TYPE.getKey(e.getType()).getPath().replace('_', ' ')); }
     static String a(String noun) { return ("aeiou".indexOf(noun.charAt(0)) >= 0 ? "an " : "a ") + noun; }
 }

@@ -283,15 +283,20 @@ seen_hit = hurt_by("damage Agent 3 minecraft:mob_attack by @e[tag=t17z,limit=1]"
 rcon(["tp Agent 15.5 200 15.5 facing 25.5 201 15.5"]); settle(10)   # facing east: the zombie (south) is on my right, out of view
 unseen_hit = hurt_by("damage Agent 3 minecraft:mob_attack by @e[tag=t17z,limit=1]")
 rcon(["tp Agent 15.5 200 15.5 facing 15.5 201 21.5"]); settle(10)   # skeleton and its arrow behind me
+rcon(["effect give @e[tag=t17z] invisibility 60 0 true"])   # (Silent too: nothing gives it away)
+rcon(["tp Agent 15.5 200 19.5 facing 15.5 201 21.5"]); settle(10)
+invisible = hurt_by("damage Agent 3 minecraft:mob_attack by @e[tag=t17z,limit=1]")
+rcon(["tp Agent 15.5 200 15.5 facing 15.5 201 21.5"]); settle(10)
 arrow = hurt_by("damage Agent 3 minecraft:arrow by @e[tag=t17a,limit=1] from @e[tag=t17s,limit=1]")
 cactus = hurt_by("damage Agent 3 minecraft:cactus")
 rcon(["kill @e[tag=t17z]", "kill @e[tag=t17s]", "kill @e[tag=t17a]", "attribute Agent minecraft:knockback_resistance base set 0"])
 check("T17 hurt cause: the kind of damage, the attacker only if on screen, and the side it came from",
       "I fell" in fell and "zombie #" in seen_hit and "ahead" in seen_hit
-      and "can't see" in unseen_hit and "zombie" not in unseen_hit and "(right)" in unseen_hit
-      and "an arrow from something I can't see" in arrow and "skeleton" not in arrow and "behind" in arrow
+      and "off-screen" in unseen_hit and "zombie" not in unseen_hit and "(right)" in unseen_hit
+      and "in front of me that I can't make out" in invisible and "zombie" not in invisible
+      and "an arrow from something not in view" in arrow and "skeleton" not in arrow and "behind" in arrow
       and "cactus" in cactus,
-      f"fall: {fell!r} | zombie ahead: {seen_hit!r} | zombie right: {unseen_hit!r} | arrow from behind: {arrow!r} | cactus: {cactus!r}")
+      f"fall: {fell!r} | zombie ahead: {seen_hit!r} | zombie right: {unseen_hit!r} | invisible zombie ahead: {invisible!r} | arrow from behind: {arrow!r} | cactus: {cactus!r}")
 
 # leave the world as we found it: agent back where it was with its hotbar, gamerules restored
 rcon([f"item replace entity Agent hotbar.{k} with " + (f"{_held[k]['item']} {_held[k]['count']}" if k in _held else "air") for k in (0, 1)])
