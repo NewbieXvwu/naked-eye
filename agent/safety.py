@@ -13,6 +13,10 @@ Learned the hard way:
   - death #5 (fall): the mod stopped the world with "⏸ PAUSED: FALLING (20 m so far, ground 37 m below)
     — LETHAL". The staircase script looked only at the "result" field, never at "woke", and answered
     the alarm by resuming — so the fall finished. An alarm that says LETHAL is not a pause to walk off.
+  - death #7 (drowning): a tunnel at y16 under the stony shore cut into the sea's aquifer. The very
+    first step already had the head underwater ("air 99%"), and the next `mine` was sent anyway — so
+    the agent swam deeper into the flooded passage and drowned with 45 m of ocean above it. Water is
+    like a fall: the alarm is the line to stop on, and there is no "one more block" after it.
 
 usage:
     from safety import stop_reason, hostiles
@@ -21,6 +25,11 @@ usage:
 HOSTILE = ("zombie", "skeleton", "creeper", "spider", "enderman", "witch", "drowned", "husk",
            "stray", "pillager", "zombie_villager", "phantom", "slime", "magma_cube", "blaze",
            "ghast", "piglin", "hoglin", "wither_skeleton", "guardian", "elder_guardian")
+
+# The hill around the spawn is a thin roof over a huge open cavern (floors y 88..119). Three deaths
+# came from digging down inside it: the staircase cuts through the crust and the agent falls 20+ m.
+# Coordinates are the box we have actually seen the cavern reach (x0, x1, z0, z1).
+SPAWN_CAVERN = (58, 112, -48, 30)
 
 LOW_HP = 14          # at or below: stop working, eat or retreat
 HOSTILE_METRES = 12  # closer than this and the next thing that happens is a hit, not a block
@@ -64,6 +73,13 @@ def stop_reason(o, res="", start_hp=None, within=HOSTILE_METRES):
     r = text.lower()
     if "falling" in r or "lethal" in r:
         return f"FALLING: {text.strip()} — the world is mid-air; do not resume without a water bucket"
+    for bad in ("drown", "out of air", "running out of air", "head underwater", "underwater"):
+        if bad in r:
+            return (f"DROWNING: {text.strip()} — swim to air now; a flooded tunnel is not dug through, "
+                    "it is left behind")
+    bubbles = me.get("air_bubbles")
+    if bubbles is not None and bubbles <= 3:
+        return f"air bubbles {bubbles} left — get my head out of the water before anything else"
     hp = me.get("health")
     if hp is not None:
         if hp <= LOW_HP:
@@ -79,3 +95,32 @@ def stop_reason(o, res="", start_hp=None, within=HOSTILE_METRES):
     if close:
         return "hostiles near: " + describe(close)
     return None
+
+
+def in_spawn_cavern(x, z):
+    """True inside the known cavern under the spawn hill, where digging down is a coin flip."""
+    x0, x1, z0, z1 = SPAWN_CAVERN
+    return x0 <= x <= x1 and z0 <= z <= z1
+
+
+def water_breach(res):
+    """True when the last action cut into water: from here on the tunnel is flooding behind us."""
+    r = res_text(res).lower()
+    return any(k in r for k in ("liquid (water)", "splashing", "swimming", "splash"))
+
+
+WATER_BIOMES = ("ocean", "river", "beach", "shore", "swamp", "wetland", "mangrove")
+
+
+def near_water(o):
+    """A guess at "there is a sea or river above or beside me", for scripts that dig down.
+
+    The obs biome is the surface biome: standing 45 m under the sea still reported `stony_shore`,
+    which is exactly why death #7 happened. Water in view plus a coastal/oceanic biome is the best
+    warning the honest client can give itself before it opens a borehole under a sea.
+    """
+    b = (o.get("self", {}).get("biome") or "").lower().replace(" ", "_")
+    water_biome = any(w in b for w in WATER_BIOMES)
+    water_seen = any((blk.get("block") or "") in ("water", "flowing_water")
+                     for blk in o.get("blocks_in_view", []))
+    return water_biome and water_seen

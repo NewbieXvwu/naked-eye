@@ -48,7 +48,8 @@ def count(o, item):
 
 
 # The staircase's rules live in agent/safety.py, shared by every macro script (gather, shelter, mine).
-from safety import HOSTILE, LOW_HP, HOSTILE_METRES, hostiles, stop_reason  # noqa: E402,F401
+from safety import (HOSTILE, LOW_HP, HOSTILE_METRES, hostiles, stop_reason, in_spawn_cavern,  # noqa: E402,F401
+                      near_water)
 
 
 def main(argv):
@@ -73,6 +74,20 @@ def main(argv):
         print("dead")
         return 1
     y0 = feet(o)[1]
+    fx, _, fz = feet(o)
+    if in_spawn_cavern(fx, fz) and "--force" not in argv:
+        # Deaths #4, #5 and #6: this hill is the roof of an open cavern; every staircase down here has
+        # broken through it. Walk out of the box first (150+ m), then dig.
+        print(f"refusing to dig down at {fx}, {fz}: this is the roof of the spawn cavern "
+              f"(x {58}..{112}, z {-48}..{30}). Walk out of it first, or pass --force.")
+        return 2
+    if near_water(o) and "--force" not in argv:
+        # Death #7: a tunnel at y16 under the stony shore cut into the sea's aquifer and drowned us 45 m
+        # below the waves. Water above is not something to dig under; walk inland first.
+        print(f"refusing to dig down at {fx}, {fz}: sea or river is right there "
+              f"({o['self'].get('biome')}, water in view) — a shaft here can open the aquifer. "
+              f"Walk inland first, or pass --force.")
+        return 2
     start_hp = o["self"].get("health")
     plugs = 0
     res = ""

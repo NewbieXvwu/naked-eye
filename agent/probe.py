@@ -68,8 +68,11 @@ def main(argv):
     dx, dz = STEPS[direction]
     cell = (fx + dx, fy, fz + dz)
     # Standing on the surface, dig the block at our feet level in front: a 1-deep step down.
-    act({"type": "dig", "pos": list(cell), "wait": 20})
+    r = act({"type": "dig", "x": cell[0], "y": cell[1], "z": cell[2], "wait": 20})
     act({"type": "look", "yaw": 0 if dx else (90 if dz > 0 else -90), "pitch": -55, "wait": 5})
+    if "error" in (r or {}):
+        print(f"probe {cell}: the game refused the dig ({r['error']})")
+        return 1
     o = obs()
     c = crosshair(o)
     fx2, fy2, fz2 = feet(o)

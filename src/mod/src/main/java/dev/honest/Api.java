@@ -432,8 +432,9 @@ public final class Api {
         byte[] out; int code = 200;
         try { out = GSON.toJson(b.get()).getBytes(StandardCharsets.UTF_8); }
         catch (Throwable t) {
-            code = 500;
-            JsonObject e = new JsonObject(); e.addProperty("error", String.valueOf(t.getCause() != null ? t.getCause() : t));
+            Throwable c = t.getCause() != null ? t.getCause() : t;
+            code = c instanceof IllegalArgumentException ? 400 : 500;   // a bad request is my mistake, not the mod's
+            JsonObject e = new JsonObject(); e.addProperty("error", String.valueOf(c));
             out = GSON.toJson(e).getBytes(StandardCharsets.UTF_8);
         }
         ex.getResponseHeaders().add("Content-Type", "application/json; charset=utf-8");
@@ -501,6 +502,12 @@ public final class Api {
 
     static float f(JsonObject a, String k, float d) { return a.has(k) ? a.get(k).getAsFloat() : d; }
     static Vec3 vec(JsonObject a) { return new Vec3(a.get("x").getAsDouble(), a.get("y").getAsDouble(), a.get("z").getAsDouble()); }
-    static BlockPos bpos(JsonObject a) { return BlockPos.containing(a.get("x").getAsDouble(), a.get("y").getAsDouble(), a.get("z").getAsDouble()); }
+    /** a block position from an action; a missing coordinate says so, instead of a bare NullPointerException. */
+    static BlockPos bpos(JsonObject a) {
+        for (String k : new String[]{"x", "y", "z"})
+            if (!a.has(k) || a.get(k).isJsonNull())
+                throw new IllegalArgumentException("this action needs x, y, z (got " + a + ")");
+        return BlockPos.containing(a.get("x").getAsDouble(), a.get("y").getAsDouble(), a.get("z").getAsDouble());
+    }
     static void sleep(long ms) { try { Thread.sleep(ms); } catch (InterruptedException ignored) {} }
 }

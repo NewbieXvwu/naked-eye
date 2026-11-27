@@ -75,6 +75,10 @@ description: "Use when playing or developing Naked Eye (眼见为实), the naked
 - 竖井每挖一段就插火把；没火把就不要往下走（身后刷出来的怪会追着你跑）。
 - **警报在 `woke` 里，不在 `result` 里**：第五次死亡时，mod 已经喊了 `⏸ PAUSED: FALLING (20 m so far) — LETHAL`，脚本却只读 `result`（那还是上一件 task 的旧话），于是当成"没事"继续发指令，一下一步世界就解冻，人摔死了。任何脚本发完 act 都要看整条回包，尤其是 `woke`；见到 FALLING/LETHAL 就立刻停手。
 - **掉下去没有水桶就是死**：空气里能救命的只有落地水（还需要快捷栏里有水桶）。所以下挖的前提是：水桶在快捷栏、且不在出生点 40 m 内的洞顶上挖。
+- **海面下面不要挖**：第七命死在石岸下面。那地方表面是 `stony_shore`，头顶其实是海；从 y62 打斜井到 y16，第一条水平隧道往北 2 格就挖穿含水层，`[reflex] head underwater, air 99%`——第一步就已经在水里了。之后还继续发 `mine south 16`，等于往满是水的通道里游，45 m 海水压在上面，最后淹死（13 → 0 血，中间只剩 4 格气泡）。
+  - 破水那一刻就**倒退**，不许再挖：水会顺着隧道追过来。`safety.stop_reason()` 现在把 `drown / out of air / head underwater` 当硬停，气泡 ≤3 也直接停；`descend.py`、`ores.py` 见到「岸边 + 视野里有水」（`near_water`）就拒绝开工，除非 `--force`。
+  - 一格高、整格是水、头顶是实心方块的时候，跳没用（人根本浮不上去）；唯一出路是**往上挖开头顶那格**（上面通常是干的巷道），或者先把水口用方块堵上再走。
+  - 想在岸边挖，先往内陆走至少 40 m，`hc sonar` 确认四周是实心山体再下。
 
 **岩浆、挖矿、传送门**
 - 基岩在 y −60..−59，挖钻石的隧道放在 y −56。
@@ -117,7 +121,7 @@ description: "Use when playing or developing Naked Eye (眼见为实), the naked
 
 ## 5. 战绩
 
-- 本机接管（第五局，进行中）：新开一档，死了 5 次。①夜里空手没封成顶，被骷髅射死；②挖竖井 13 格摔到 1 血，脚本无视告警继续挖，被骷髅补刀；③日出开封顶时僵尸就在 5 m 内，空手 6 血被打死。三条都改成了代码：`shelter.py`（封顶 + `--out`）、`descend.py`（`stop_reason`）、`gather.py`（同一个护栏）。④在出生点的洞穴顶盖上向下挖，第一步踩空，y135 → y100 摔死；新增 `probe.py`（挖一格、低头看 crosshair 再决定走不走），打法手册写上「出生点是洞穴顶盖」。⑤又在出生点山坡 (73,134,-8) 往南挖台阶去挖 y129 的铁矿，挖穿洞顶从 y134 掉到 y106；mod 已经喊 `FALLING — LETHAL`，`descend.py` 只读 `result` 没读 `woke`，还发了个 wait 去"看看情况"，等于把世界解冻，摔死。修复：`safety.res_text()` 把 `woke` 并进判定，FALLING/LETHAL 一律停；`descend.py` 把整条回包交给 `stop_reason`；新增 3 个测试。
+- 本机接管（第五局，进行中）：新开一档，死了 7 次。①夜里空手没封成顶，被骷髅射死；②挖竖井 13 格摔到 1 血，脚本无视告警继续挖，被骷髅补刀；③日出开封顶时僵尸就在 5 m 内，空手 6 血被打死。三条都改成了代码：`shelter.py`（封顶 + `--out`）、`descend.py`（`stop_reason`）、`gather.py`（同一个护栏）。④在出生点的洞穴顶盖上向下挖，第一步踩空，y135 → y100 摔死；新增 `probe.py`（挖一格、低头看 crosshair 再决定走不走），打法手册写上「出生点是洞穴顶盖」。⑤又在出生点山坡 (73,134,-8) 往南挖台阶去挖 y129 的铁矿，挖穿洞顶从 y134 掉到 y106；mod 已经喊 `FALLING — LETHAL`，`descend.py` 只读 `result` 没读 `woke`，还发了个 wait 去"看看情况"，等于把世界解冻，摔死。修复：`safety.res_text()` 把 `woke` 并进判定，FALLING/LETHAL 一律停；`descend.py` 把整条回包交给 `stop_reason`；新增 3 个测试。⑥`descend.py` 又被派去 (94,129,-15) 往南挖 y110，挖穿同一片洞顶；落地水没有、方块也放不了，掉到 y89 摔死。新增 `SPAWN_CAVERN` 盒子（x 58..112，z -48..30），在盒子里 `descend.py` 直接拒开工。⑦在石岸山脚往 y16 挖铁，挖穿海床下的含水层淹死；`stop_reason` 现在认 `drown / out of air / head underwater` 和 ≤3 格气泡，`descend.py`/`ores.py` 对「岸边有水」拒开工（`near_water`）。
 - 第二局：挖到钻石（第 3 条命）。
 - 第四局：死到第 21 次，两次凑齐下界材料都没能进去。
 - 第五局起：思考时世界冻结（空闲暂停），`hc speed auto` 自动定倍速，`hc note` 解说，死后用 `tools/review.py` 复盘。

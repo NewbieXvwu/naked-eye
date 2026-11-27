@@ -141,6 +141,12 @@ def main(force):
         return 1
     fx, fy, fz = feet(obs())
     cx, cy, cz = cap_cell(fx, fy, fz)
+    # LOOK at the walls around the cap before clicking one: the mod only clicks a face it has *seen*
+    # (2026-11-27: five caps in a row failed with "no known solid face" because inside a 1x1 shaft nobody
+    #  had ever looked up at the four walls of the hole).
+    for yaw in (0, 90, 180, 270, 45, 135, 225, 315):
+        act({"type": "look", "yaw": yaw, "pitch": -55, "wait": 2})
+    act({"type": "look", "yaw": 0, "pitch": -88, "wait": 3})
     r = act({"type": "place", "x": cx, "y": cy, "z": cz, "item": item, "wait": 60})
     msg = r.get("observation", {}).get("control", {}).get("last_result") or r.get("result") or ""
     print(f"cap at {cx},{cy},{cz}:", msg)

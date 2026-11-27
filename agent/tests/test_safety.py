@@ -93,3 +93,55 @@ def test_a_quiet_response_does_not_stop_anything():
     res = {"result": "ok", "woke": None,
            "observation": {"control": {"last_result": "staircase down south x8 -> done"}}}
     assert stop_reason(obs(20), res) is None
+
+
+# --- death #6: the roof of the spawn cavern ----------------------------------------------------
+
+def test_the_spawn_cavern_box_is_where_the_cavern_was_seen():
+    from safety import in_spawn_cavern
+    assert in_spawn_cavern(72, -6)      # death #5
+    assert in_spawn_cavern(94, -16)     # death #6
+    assert in_spawn_cavern(80, -35)     # death #2 cave-in area
+    assert not in_spawn_cavern(200, -16)
+    assert not in_spawn_cavern(94, -200)
+
+
+# --- death #7: under the sea, the aquifer is not something to dig through ------------------------
+
+def test_a_drowning_wake_stops_the_script_before_the_next_dig():
+    res = {"result": "ok",
+           "woke": "hurt (13 -> 11 HP) — drowning",
+           "observation": {"control": {"last_result": "mine south x16 -> ok (woke: running out of air)"},
+                           "self": {"health": 11, "dead": False}, "entities": []}}
+    why = stop_reason(obs(11), res)
+    assert why and "DROWNING" in why
+
+
+def test_running_out_of_air_is_a_stop_not_a_warning():
+    res = {"result": "ok",
+           "woke": "running out of air",
+           "observation": {"control": {"last_result": "head underwater, air 52%"},
+                           "self": {"health": 20, "dead": False}, "entities": []}}
+    assert "DROWNING" in stop_reason(obs(20), res)
+
+
+def test_three_bubbles_left_is_already_too_late():
+    o = obs(20)
+    o["self"]["air_bubbles"] = 3
+    why = stop_reason(o, {"result": "ok"})
+    assert why and "air" in why.lower()
+
+
+def test_water_breach_is_recognised_from_the_action_text():
+    from safety import water_breach
+    assert water_breach({"result": "tunnel north x16 -> liquid (water) where the next step goes"})
+    assert water_breach({"result": "staircase -> done", "woke": "splashing"})
+    assert not water_breach({"result": "staircase down east x12 -> done, 12 steps"})
+
+
+def test_near_water_on_a_shore_with_the_sea_in_view():
+    from safety import near_water
+    o = {"self": {"biome": "stony_shore"}, "blocks_in_view": [{"block": "water"}]}
+    assert near_water(o)
+    dry = {"self": {"biome": "forest"}, "blocks_in_view": [{"block": "stone"}]}
+    assert not near_water(dry)
