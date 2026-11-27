@@ -65,11 +65,17 @@ def fmt(o):
     held = next((i["item"] for i in s.get("inventory", []) if i["slot"] == s["selected_slot"]), "empty hand")
     flags = " ".join(k for k in ("in_water", "on_fire", "dead") if s.get(k))
     if s.get("paused"): out.append(f"⏸  PAUSED — {s['paused']}  (any action resumes)")
+    if s.get("FALLING"):
+        f = s["FALLING"]
+        out.append(f"⚠ FALLING at {f.get('speed_mps', '?')} m/s: dropped {f['dropped_m']} m so far; " + (f"ground ({f['landing_on']}) {f['ground_m']} m below, landing ≈ {f['landing_damage_about']} HP — " if "ground_m" in f else f"{f['ground']} — ") + f["verdict"])
     out.append(f"HP {s['health']}/{s['max_health']}  food {s['food']}  armor {s['armor']}  xp {s['xp_level']}"
                + (f"  air {s['air_bubbles']}" if 'air_bubbles' in s else "") + (f"  [{flags}]" if flags else ""))
     out.append(f"at {s['pos']} facing {s['facing']} (yaw {s['yaw']}, pitch {s['pitch']})  {s['dimension'].split(':')[-1]}/{s['biome']}  "
                f"{s['time']}{'  ⛈ '+s['weather'] if s.get('weather') else ''}  light {s['light']}  holding [{s['selected_slot']}] {held}"
                + (f"  SCREEN: {s['open_screen']}" if 'open_screen' in s else ""))
+    if s.get("motion"):
+        m = s["motion"]
+        out.append("moving" + (f" {m['speed_mps']} m/s {m['heading']}" if 'speed_mps' in m else "") + (f", {'falling' if m['vertical_mps'] < 0 else 'rising'} {abs(m['vertical_mps'])} m/s" if 'vertical_mps' in m else ""))
     inv = ", ".join(f"{i['item']}x{i['count']}@{i['slot']}" + (f"({i['durability_pct']}%)" if 'durability_pct' in i else "") for i in s.get("inventory", []))
     out.append("inventory: " + (inv or "(empty)"))
     if "container" in s:
@@ -88,6 +94,8 @@ def fmt(o):
         desc = ", ".join(f"{k}={v}" for k, v in extra.items())
         out.append(f"  #{e['id']} {e['type']}{(' ('+e['item']+')') if 'item' in e else ''} ~{e['dist']}m {side}, elev {e['elevation']}° "
                    f"≈{e['approx_pos']}" + (f"  looks: {desc}" if desc else "") + (f"  gear: {gear}" if gear else "")
+                   + ("  moving" + (f" {e['moving']['speed_mps']} m/s {e['moving']['heading']} ({e['moving'].get('relative', '')})" if 'speed_mps' in e['moving'] else "")
+                      + (f" {'down' if e['moving']['vertical_mps'] < 0 else 'up'} {abs(e['moving']['vertical_mps'])} m/s" if 'vertical_mps' in e['moving'] else "") if 'moving' in e else "")
                    + (f"  name {e['name']}" + (f" [team {e['team']}{', teammate' if e.get('teammate') else ''}]" if 'team' in e else "") if 'name' in e else "")
                    + ("  (only the name tag shows: behind a wall or in the dark)" if e.get("detail") == "only_name_tag_visible"
                       else "  (too far to make out)" if e.get("detail") else ""))

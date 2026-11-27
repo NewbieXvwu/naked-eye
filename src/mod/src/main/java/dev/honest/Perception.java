@@ -195,6 +195,10 @@ public final class Perception {
         if (lvl.getThunderLevel(1f) > 0.5f) s.addProperty("weather", "THUNDERSTORM (dark enough for monsters to spawn in the open, even by day)");
         else if (lvl.getRainLevel(1f) > 0.3f) s.addProperty("weather", "raining");
         s.addProperty("on_ground", pl.onGround());
+        JsonObject motion = Motion.self(pl);
+        if (motion != null) s.add("motion", motion);   // (as of the last tick the world ran: it holds while frozen)
+        JsonObject fall = Fall.describe(pl);
+        if (fall != null) s.add("FALLING", fall);   // (HP is still full mid-fall; the landing is what kills)
         if (pl.isInWater()) s.addProperty("in_water", true);
         if (pl.isOnFire()) s.addProperty("on_fire", true);
         if (mc.gui.screen() != null) s.addProperty("open_screen", mc.gui.screen().getTitle().getString().isEmpty() ? "screen" : mc.gui.screen().getTitle().getString());
@@ -335,6 +339,7 @@ public final class Perception {
             JsonArray ap = new JsonArray();
             ap.add(Math.round(est.x)); ap.add(Math.round(est.y - bb.getYsize() / 2)); ap.add(Math.round(est.z));
             j.add("approx_pos", ap);
+            if (honest) { JsonObject mv = Motion.seen(e, eye, dist); if (mv != null) j.add("moving", mv); }
             if (tagOnly) {
                 j.addProperty("detail", "only_name_tag_visible");   // (through a wall, or too dark to see them)
             } else if (eyesOnly) {

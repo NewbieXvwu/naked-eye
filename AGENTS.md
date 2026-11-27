@@ -29,8 +29,13 @@ Needs Python 3.8+, ~4 GB RAM and ~3 GB of disk. The game window is for humans wa
   again a moment after the action is done. Take your time.
 - Some things happen on their own, fast, like reflexes: swimming up when out of air, digging out when
   buried, pouring a water bucket when in lava, backing off a swelling creeper, hitting back when hit.
-- When something alarming happens mid-action (hurt, a hostile mob close, on fire), the world pauses and
-  the action is interrupted with a `PAUSED` / `woke early` reason. Look, decide, act.
+- When something alarming happens mid-action (hurt, a hostile mob close, on fire, a fall that will hurt), the world
+  pauses and the action is interrupted with a `PAUSED` / `woke early` reason. Look, decide, act.
+- The world may stand still while you're in mid-air: full HP then means nothing. `obs` says `⚠ FALLING` with the
+  speed, the drop so far, the ground below (if you've seen it) and what the landing will cost. You see how fast
+  you and everything in view are moving (`motion`, and `moving` on each entity) — still true while the world is frozen.
+  Digging out the block you stand on is refused unless you know what's under it (`force` to insist); a water bucket in
+  the hotbar is poured by reflex before a bad landing.
 - **Speed up.** Right after `./start.sh`, run `tools/hc speed auto`: it finds the fastest speed this machine keeps
   up with (server and client together) and uses it. It's fair: you and the world speed up together, the world is
   frozen while you think anyway, and alarms and reflexes are checked every game tick at any speed. If the machine

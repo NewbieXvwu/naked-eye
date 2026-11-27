@@ -48,7 +48,7 @@ public class HonestClient implements ClientModInitializer {
                 String dim = mc.level.dimension().identifier().getPath();
                 if (!dim.equals(Perception.MAP.dimension())) { Perception.MAP.switchTo(dim); Places.switchDim(dim); }
             }
-            if (!frozen && mc.level != null) worldTicks++;
+            if (!frozen && mc.level != null) { worldTicks++; try { Motion.tick(mc); } catch (Throwable t) { LOG.warn("[honest] motion failed", t); } }
             try { Review.tick(mc); } catch (Throwable t) { LOG.warn("[honest] review pose failed", t); }   // (before the eyes look)
             if (Review.ON) {} else if (!frozen || !Pause.allow) Controller.tick(mc); else Controller.releaseKeys(mc);   // (pausing off: not my pause)
             try { ArrowLog.tick(mc); } catch (Throwable t) { LOG.warn("[honest] arrow log failed", t); }

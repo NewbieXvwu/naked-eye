@@ -233,6 +233,31 @@ public final class Controller {
         }
         // Third reflex: standing in lava with a water bucket in the hotbar -> look down and pour it (a reflex, not a plan;
         // the slow brain needed 30 ticks and burned to death with the bucket in hand)
+        // Seventh reflex: falling to a landing that would hurt badly, a water bucket in the hotbar -> look down and pour it
+        // just before the ground (the "water bucket clutch"); then scoop it back up. Not where water boils away.
+        {
+            boolean boils = mc.level.environmentAttributes().getDimensionValue(net.minecraft.world.attribute.EnvironmentAttributes.WATER_EVAPORATES);
+            var inv = pl.getInventory();
+            if (clutch == 0 && antiFall && !boils && Fall.falling(pl)) {
+                Object[] g = Fall.ground(pl);
+                int dmg = g == null ? 0 : Fall.landingDamage(pl, (double) g[0], (net.minecraft.world.level.block.state.BlockState) g[1]);
+                int wb = -1; for (int i = 0; i < 9; i++) if (Perception.itemName(inv.getItem(i)).equals("water_bucket")) wb = i;
+                if (wb >= 0 && dmg >= Math.min(4, pl.getHealth() - 1)) {
+                    clutch = 1; clutchSlot = wb; Events.note("reflex", "falling to a " + dmg + " HP landing -> water bucket clutch");
+                }
+            }
+            if (clutch == 1) {
+                if (inv.getSelectedSlot() != clutchSlot) press(mc.options.keyHotbarSlots[clutchSlot]);
+                lookAngles(pl.getYRot(), 90f);
+                if (mc.hitResult instanceof BlockHitResult bh && mc.hitResult.getType() == HitResult.Type.BLOCK && bh.getDirection() == Direction.UP
+                        && inv.getSelectedSlot() == clutchSlot && pl.getXRot() > 75) { click(mc, "use"); clutch = 2; clutchT = 0; }
+                if (pl.onGround() || pl.isInWater()) clutch = pl.isInWater() ? 2 : 0;   // (landed before it was in reach)
+            } else if (clutch == 2 && ++clutchT > 4 && (pl.onGround() || pl.isInWater())) {
+                // down safely: take the water back (a player always does: it's the only bucket)
+                if (Perception.itemName(pl.getMainHandItem()).equals("bucket")) { lookAngles(pl.getYRot(), 90f); if (clutchT > 7) { click(mc, "use"); clutch = 0; Events.note("reflex", "landed in my water -> scooping it back up"); } }
+                else clutch = 0;
+            }
+        }
         // (in the Nether water boils away: no point looking down to pour it, those ticks are better spent getting out)
         boolean waterBoils = mc.level.environmentAttributes().getDimensionValue(net.minecraft.world.attribute.EnvironmentAttributes.WATER_EVAPORATES);
         if (antiLava && !waterBoils && (pl.isInLava() || pl.isOnFire() && !pl.isInWater() || lavaPour > 0)) {
@@ -276,7 +301,8 @@ public final class Controller {
         }
     }
 
-    public static boolean antiDrown = true, antiSuffocate = true, antiLava = true, antiCreeper = true;
+    public static boolean antiDrown = true, antiSuffocate = true, antiLava = true, antiCreeper = true, antiFall = true;
+    static int clutch = 0, clutchSlot = 0, clutchT = 0;
     static boolean creeperFlee = false;
     public static boolean antiMelee = true; static int lastHurtTick = -999; static float lastHp = 20;
     public static final java.util.ArrayDeque<Integer> dropQueue = new java.util.ArrayDeque<>(); static int dropStage = 0, dropHb = 0;
@@ -395,7 +421,7 @@ public final class Controller {
      *  (Client ticks keep running while the world is frozen, so a held key would just count down uselessly.) */
     public static boolean idleNow(LocalPlayer pl) {
         return task == null && holds.isEmpty() && flick == null && targetYaw == null && dropQueue.isEmpty()
-                && lavaPour == 0 && !creeperFlee && !pl.isUsingItem() && !BaritoneBridge.busy();
+                && lavaPour == 0 && clutch == 0 && !creeperFlee && !pl.isUsingItem() && !BaritoneBridge.busy();
     }
 
     public static JsonObject status() {
@@ -417,6 +443,24 @@ public final class Controller {
         public String tick(Minecraft mc, LocalPlayer pl) {
             if (++t > 600) return "timeout";
             // the lesson of death #10: opening a block that lava sits behind lets it flow straight in on top of you
+            if (t == 1 && !force) {
+                // the oldest rule of the game: don't dig the block you stand on unless you know what's under it
+                var bb = pl.getBoundingBox();
+                boolean underMe = pl.onGround() && pos.getY() == Mth.floor(pl.getY()) - 1
+                        && pos.getX() + 1 > bb.minX && pos.getX() < bb.maxX && pos.getZ() + 1 > bb.minZ && pos.getZ() < bb.maxZ;
+                if (underMe) {
+                    BlockState below = Perception.MAP.get(pos.getX(), pos.getY() - 1, pos.getZ());
+                    boolean floorRightUnder = below != null && !Vis.isAirish(below) && below.getFluidState().isEmpty();
+                    if (!floorRightUnder) {
+                        int air = 0; BlockState s = below;
+                        for (int k = 1; k < 40 && s != null && Vis.isAirish(s) && s.getFluidState().isEmpty(); k++) { air++; s = Perception.MAP.get(pos.getX(), pos.getY() - 1 - k, pos.getZ()); }
+                        String what = below == null ? "I haven't seen what's under it"
+                                : !below.getFluidState().isEmpty() ? "there's " + Perception.itemName(new net.minecraft.world.item.ItemStack(below.getBlock())) + " under it"
+                                : s == null ? "there's a drop under it, at least " + air + " m (the bottom unseen)" : "there's a " + air + " m drop under it";
+                        return "refused: that's the block I'm standing on, and " + what + " — never dig straight down (dig beside me and look first, or force)";
+                    }
+                }
+            }
             if (t == 1 && !force) for (Direction d : Direction.values()) {
                 if (d == Direction.DOWN) continue; // lava under it can't climb up into the hole
                 BlockPos n = pos.relative(d);

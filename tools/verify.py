@@ -298,6 +298,50 @@ check("T17 hurt cause: the kind of damage, the attacker only if on screen, and t
       and "cactus" in cactus,
       f"fall: {fell!r} | zombie ahead: {seen_hit!r} | zombie right: {unseen_hit!r} | invisible zombie ahead: {invisible!r} | arrow from behind: {arrow!r} | cactus: {cactus!r}")
 
+# T18: falling. Digging out the block under my feet, the world paused mid-air with HP still full: "fine" — then the
+# landing killed it. Now: digging straight down into the unknown/a drop is refused; a fall that will hurt badly is an
+# alarm that says so (landing damage, from the ground my eyes saw); and a water bucket in the hotbar clutches it.
+arena()
+rcon(["fill 15 200 17 15 225 17 air", "setblock 15 225 17 stone", "tp Agent 15.5 226 17.5 facing 15.5 200 20",
+      "effect clear Agent", "effect give Agent instant_health 1 10 true"])
+time.sleep(1.5); post({"type": "look", "yaw": 0, "pitch": 85, "wait": 30})   # (look down: see the drop)
+refused = post({"type": "dig", "x": 15, "y": 225, "z": 17, "wait": 40}).get("observation", {}).get("control", {}).get("last_result", "")
+post({"type": "pause_policy", "allow": True, "idle": False})
+post({"type": "dig", "x": 15, "y": 225, "z": 17, "force": True, "wait": 200})   # (returns as the block goes)
+time.sleep(2); mid = honest()["self"]; woke = mid.get("paused") or ""   # (by now: falling, and paused for it)
+rcon(["effect give Agent slow_falling 10 0 true", "effect give Agent resistance 10 4 true"])   # (spare it the landing)
+post({"type": "wait", "wait": 120, "resume": True}); post({"type": "pause_policy", "allow": False})
+check("T18 digging out my own floor: refused over a drop; forced, the fall is an alarm in mid-air that says the landing kills",
+      "refused: that's the block I'm standing on" in refused and "drop" in refused and "FALLING" in woke and "LETHAL" in woke
+      and mid["health"] >= 19 and "FALLING" in mid and mid["FALLING"].get("speed_mps", 0) > 5,
+      f"refused: {refused[:110]!r} | paused: {woke[:150]!r} | HP then {mid['health']}, falling at {mid.get('FALLING', {}).get('speed_mps')} m/s")
+arena()
+rcon(["item replace entity Agent hotbar.2 with water_bucket", "effect clear Agent", "effect give Agent instant_health 1 10 true",
+      "tp Agent 15.5 226 17.5 facing 15.5 200 20"])
+post({"type": "look", "yaw": 0, "pitch": 85, "wait": 3})
+post({"type": "wait", "wait": 160})
+s = honest()["self"]
+inv = {i["slot"]: i["item"] for i in s["inventory"]}
+check("T19 water bucket clutch: a 26 m fall, water poured just before the ground, then scooped back up",
+      s["health"] >= 19 and not s.get("dead") and inv.get(2) == "water_bucket", f"HP {s['health']}, slot 2: {inv.get(2)}")
+rcon(["item replace entity Agent hotbar.2 with air"])
+
+# T20: how fast things move, as the eyes judge it — mine and what I see — and still so while the world stands still
+# (a frozen world must not read as "everything stopped": a body frozen mid-fall is still falling)
+arena()
+rcon(["tp Agent 15.5 200 4.5 facing 15.5 201 30", "effect clear Agent"]); settle(20)
+import threading
+threading.Thread(target=post, args=({"type": "hold", "keys": ["forward", "sprint"], "ticks": 60, "wait": 62},), daemon=True).start()
+time.sleep(1.2); rcon(["summon falling_block 15.5 209 30.5 {BlockState:{Name:\"minecraft:sand\"},Time:1}"]); time.sleep(0.6)
+rcon(["tick freeze"]); time.sleep(0.3)
+o1 = honest(); time.sleep(1.5); o2 = honest()
+rcon(["tick unfreeze"]); time.sleep(3.5)
+def sand(o): return next((e.get("moving", {}) for e in o["entities"] if e["type"] == "falling_block"), {})
+me1, me2 = o1["self"].get("motion", {}), o2["self"].get("motion", {})
+check("T20 speed: my own (sprinting ~5.6 m/s) and a falling block's, read the same 1.5 s into a frozen world",
+      4 <= me1.get("speed_mps", 0) <= 7 and me1 == me2 and sand(o1).get("vertical_mps", 0) < -3 and sand(o1) == sand(o2) and "speed_mps" not in sand(o1),
+      f"me: {me1} then {me2} | sand: {sand(o1)} then {sand(o2)}")
+
 # leave the world as we found it: agent back where it was with its hotbar, gamerules restored
 rcon([f"item replace entity Agent hotbar.{k} with " + (f"{_held[k]['item']} {_held[k]['count']}" if k in _held else "air") for k in (0, 1)])
 _p = _start["pos"]

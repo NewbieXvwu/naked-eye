@@ -48,6 +48,7 @@ public final class Pause {
         LocalPlayer pl = mc.player;
         if (pl == null) return;
         float hp = pl.getHealth(); int air = pl.getAirSupply();
+        if (pl.onGround() || pl.isInWater()) fallAlarmed = false;
         // joined (or restarted) into a world that is still frozen from an earlier pause: own it, so the next action resumes
         // someone else unfroze the world under my thinking-pause: let go of it, so the idle pause can freeze it again
         if ("idle".equals(pausedKind) && paused != null && mc.level != null && mc.level.tickRateManager().runsNormally()
@@ -64,6 +65,11 @@ public final class Pause {
             else if (lastHp >= 0 && hp < lastHp) { why = String.format("hurt %.0f -> %.0f HP%s", lastHp, hp, Api.hurtCause(pl)); kind = "hurt"; }
             else if (pl.isUnderWater() && air < pl.getMaxAirSupply() / 2 && lastAir >= pl.getMaxAirSupply() / 2) { why = "half my air is gone"; kind = "air"; }
             else if (pl.isOnFire() || pl.isInLava()) { why = pl.isInLava() ? "I'm in lava" : "I'm on fire"; kind = "fire"; }
+            else if (!fallAlarmed && Fall.alarming(pl)) {
+                fallAlarmed = true; var f = Fall.describe(pl);
+                why = "FALLING (" + f.get("dropped_m").getAsInt() + " m so far" + (f.has("ground_m") ? ", ground " + f.get("ground_m").getAsInt() + " m below" : ", can't see the bottom")
+                    + ") — " + f.get("verdict").getAsString(); kind = "fall";
+            }
             else {
                 for (Entity e : mc.level.getEntities(pl, pl.getBoundingBox().inflate(5))) {
                     if (!(e instanceof Enemy) || alarmedMobs.contains(e.getId())) continue;
@@ -116,6 +122,7 @@ public final class Pause {
         }
     }
 
+    static boolean fallAlarmed;
     static String pausedKind = "manual"; static String pausedKindLast = ""; static int lastFirePause = -9999;
     public static void pause(String why, String kind) {
         if (paused != null) {   // already frozen for thinking; an explicit pause just relabels it (world is frozen already)
