@@ -52,31 +52,46 @@ public final class Mine implements Controller.Task {
         if (plug != null) { // reflex in progress: finish plugging before anything else
             String r = plug.tick(mc, pl);
             if (r == null) return null;
-            return stop(plugWhy + " -> plug: " + r);
+            plug = null; Controller.release("use");
+            if (!r.equals("placed")) return retreat(plugWhy + " -> plug: " + r);
+            plugged.add(plugWhy.replaceAll(" after .*", ""));
+            // more of it coming through another cell? look again before going on (a pocket often touches two)
         }
         if (startHp < 0) { startHp = pl.getHealth(); startTool = held.getItem(); }
-        if (origin != null && phase >= 1 && phase <= 2) { // did the hole we just opened touch a liquid? plug it NOW (lava flows in ~1.5 s)
-            BlockPos[] cs = cells();
-            for (BlockPos c : cs) {
-                boolean open = Vis.isAirish(mc.level.getBlockState(c)) || isFluid(c);
-                if (!open) continue;
+        if (origin != null && phase >= 1 && phase <= 2) {
+            // Did the hole we just opened touch lava? Look the moment a block gives way, not at the next sweep: lava
+            // lights itself, so the eyes see it the instant it's exposed — and in the Nether it flows a block every
+            // 10 ticks (overworld: 30), so the four ticks to the next sweep plus a slow plug were the death of me.
+            lookAtOpening(mc, pl);
+            BlockPos best = null; int bestRank = 99; String bestWhy = null;
+            for (BlockPos c : cells()) {
+                if (!(Vis.isAirish(mc.level.getBlockState(c)) || isFluid(c))) continue;
+                BlockState cs = Perception.MAP.get(c.getX(), c.getY(), c.getZ());
+                boolean lavaIn = isFluid(c) && danger(cs);
+                BlockPos from = null;
                 for (Direction d : Direction.values()) {
                     BlockPos n = c.relative(d);
                     if (n.equals(origin) || n.equals(origin.above())) continue;
-                    BlockState ns = Perception.MAP.get(n.getX(), n.getY(), n.getZ());
-                    boolean liquidHere = isFluid(c) && danger(Perception.MAP.get(c.getX(), c.getY(), c.getZ()));
-                    if (liquidHere || danger(ns)) {
-                        String fname = (liquidHere ? Perception.MAP.get(c.getX(), c.getY(), c.getZ()) : ns).getBlock().getName().getString().toLowerCase();
-                        String filler = null;
-                        for (String f : FILLER) { for (int i = 0; i < 36 && filler == null; i++) if (Perception.itemName(pl.getInventory().getItem(i)).equals(f)) filler = f; if (filler != null) break; }
-                        Controller.release("attack"); Controller.release("forward"); dig = null;
-                        plugWhy = "opened into " + fname + (liquidHere ? " at " + c.toShortString() : " at " + n.toShortString()) + " after " + done + " steps";
-                        if (filler == null) return stop(plugWhy + " — and I have nothing to plug it with! back off");
-                        plug = new Controller.Place(c, filler);
-                        Events.note("reflex", plugWhy + " -> plugging " + c.toShortString() + " with " + filler);
-                        return null;
-                    }
+                    if (danger(Perception.MAP.get(n.getX(), n.getY(), n.getZ()))) { from = n; break; }
                 }
+                if (!lavaIn && from == null) continue;
+                // which cell to plug first: one lava is already in, then the one at my feet' level (lava runs along
+                // the floor straight into where I stand), then the rest
+                int rank = (lavaIn ? 0 : 2) + (c.getY() == origin.getY() ? 0 : 1);
+                if (rank < bestRank) { bestRank = rank; best = c; bestWhy = "opened into lava at " + (lavaIn ? c : from).toShortString(); }
+            }
+            if (best == null && !plugged.isEmpty()) return stop(String.join("; ", plugged) + " after " + done + " steps -> plug: placed (" + plugged.size() + ")");
+            if (best != null) {
+                if (plugged.size() >= 4) return retreat(bestWhy + " — still coming after 4 plugs");
+                String filler = null;
+                for (String f : FILLER) { for (int i = 0; i < 36 && filler == null; i++) if (Perception.itemName(pl.getInventory().getItem(i)).equals(f)) filler = f; if (filler != null) break; }
+                Controller.release("attack"); Controller.release("forward"); dig = null;
+                plugWhy = bestWhy + " after " + done + " steps";
+                if (filler == null) return retreat(plugWhy + " — and I have nothing to plug it with!");
+                plug = new Controller.Place(best, filler); plug.quick = true;
+                if (best.getY() == origin.getY()) Controller.hold("back", 3);   // (off the edge of the hole: it pours in along the floor)
+                Events.note("reflex", plugWhy + " -> plugging " + best.toShortString() + " with " + filler);
+                return null;
             }
         }
         if (held.isDamageableItem() && held.getMaxDamage() - held.getDamageValue() <= Math.max(3, held.getMaxDamage() / 30)) {
@@ -112,7 +127,7 @@ public final class Mine implements Controller.Task {
                 if (grabDig != null) {
                     String r = grabDig.tick(mc, pl);
                     if (r == null) return null;
-                    Controller.release("attack"); grabDig = null; if (r.startsWith("done")) grabbed++; wait = 8; return null;
+                    Controller.letGoOfAttack(mc); grabDig = null; if (r.startsWith("done")) grabbed++; wait = 8; return null;
                 }
                 if (!grab.isEmpty()) {
                     BlockPos eyeB = BlockPos.containing(pl.getEyePosition()); BlockPos best = null; double bd = 99;
@@ -146,8 +161,15 @@ public final class Mine implements Controller.Task {
             }
             case 1 -> { // open the cells, top to bottom
                 BlockPos[] cs = cells();
-                while (digIdx < cs.length && Vis.isAirish(mc.level.getBlockState(cs[digIdx])) && !isFluid(cs[digIdx])) digIdx++;
-                if (digIdx >= cs.length) { phase = 2; wait = 6; return null; } // let the eyes take in the new hole
+                while (digIdx < cs.length && Vis.isAirish(mc.level.getBlockState(cs[digIdx])) && !isFluid(cs[digIdx])) {
+                    // the block I was digging just gave way: let go of the button NOW. (This skip used to step past the
+                    // Dig before it could say "done", so the button stayed held through the step — breaking whatever the
+                    // crosshair swept over while I walked, the next column's floor-level block first: in the Nether that
+                    // opened lava pockets I never saw, at my feet.)
+                    if (dig != null) { dig = null; Controller.letGoOfAttack(mc); }
+                    digIdx++;
+                }
+                if (digIdx >= cs.length) { phase = 2; wait = 6; Controller.letGoOfAttack(mc); return null; } // let the eyes take in the new hole
                 if (isFluid(cs[digIdx])) return stop("liquid (" + name(cs[digIdx]) + ") where the next step goes, at " + cs[digIdx].toShortString());
                 if (dig == null) {
                     BlockState bs = mc.level.getBlockState(cs[digIdx]);
@@ -158,7 +180,7 @@ public final class Mine implements Controller.Task {
                 }
                 String r = dig.tick(mc, pl);
                 if (r != null) {
-                    Controller.release("attack"); dig = null;
+                    Controller.letGoOfAttack(mc); dig = null;
                     if (!r.startsWith("done")) return stop("couldn't dig " + cs[digIdx].toShortString() + ": " + r);
                     wait = 3; // gravel/sand may fall in; phase 1 re-checks
                 }
@@ -239,4 +261,31 @@ public final class Mine implements Controller.Task {
     boolean isFluid(BlockPos p) { return !Minecraft.getInstance().level.getFluidState(p).isEmpty(); }
     static String name(BlockPos p) { return Minecraft.getInstance().level.getBlockState(p).getBlock().getName().getString().toLowerCase(); }
     String stop(String why) { Controller.release("forward"); Controller.release("attack"); return why; }
+
+    final java.util.List<String> plugged = new java.util.ArrayList<>();
+
+    /** couldn't stop it: run back the way I came — lava crawls a block per 10 ticks even in the Nether, I run 4x that */
+    String retreat(String why) {
+        stop(why);
+        Controller.release("sneak"); Controller.hold("back", 30); Controller.hold("sprint", 30);
+        Events.note("reflex", why + " -> backing away from it");
+        return why + " -> backing away";
+    }
+
+    /** the eyes on the hole I just opened: any lava now in view next to it (it lights itself) */
+    void lookAtOpening(Minecraft mc, LocalPlayer pl) {
+        Vec3 eye = pl.getEyePosition();
+        for (BlockPos c : cells()) {
+            for (int k = -1; k < 6; k++) {
+                BlockPos n = k < 0 ? c : c.relative(Direction.values()[k]);
+                BlockState s = mc.level.getBlockState(n);
+                if (!s.getFluidState().is(net.minecraft.tags.FluidTags.LAVA)) continue;
+                BlockState known = Perception.MAP.get(n.getX(), n.getY(), n.getZ());
+                if (known != null && danger(known)) continue;
+                Vec3 at = Vec3.atCenterOf(n), toward = eye.subtract(at);
+                Vec3 face = at.add(toward.normalize().scale(0.45));   // the side of it that faces me
+                if (Vis.clear(mc.level, eye, face) || Vis.clear(mc.level, eye, at)) Perception.MAP.see(n, s);
+            }
+        }
+    }
 }

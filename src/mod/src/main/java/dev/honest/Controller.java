@@ -233,7 +233,9 @@ public final class Controller {
         }
         // Third reflex: standing in lava with a water bucket in the hotbar -> look down and pour it (a reflex, not a plan;
         // the slow brain needed 30 ticks and burned to death with the bucket in hand)
-        if (antiLava && (pl.isInLava() || pl.isOnFire() && !pl.isInWater() || lavaPour > 0)) {
+        // (in the Nether water boils away: no point looking down to pour it, those ticks are better spent getting out)
+        boolean waterBoils = mc.level.environmentAttributes().getDimensionValue(net.minecraft.world.attribute.EnvironmentAttributes.WATER_EVAPORATES);
+        if (antiLava && !waterBoils && (pl.isInLava() || pl.isOnFire() && !pl.isInWater() || lavaPour > 0)) {
             var inv = pl.getInventory(); int wb = -1;
             for (int i = 0; i < 9; i++) if (Perception.itemName(inv.getItem(i)).equals("water_bucket")) wb = i;
             if (lavaPour == 0 && wb >= 0) { lavaPour = 1; Events.note("reflex", "in lava -> pouring my water bucket at my feet"); }
@@ -285,6 +287,8 @@ public final class Controller {
     // ------------------------------------------------------------------ primitives
     public static void hold(String k, int ticks) { holds.put(k, ticks <= 0 ? -1 : ticks); }
     public static void release(String k) { holds.remove(k); }
+    /** stop breaking at once: the held button, the key itself, and the block half-broken under the crosshair */
+    public static void letGoOfAttack(Minecraft mc) { holds.remove("attack"); key(mc, "attack").setDown(false); mc.gameMode.stopDestroyBlock(); }
     public static void releaseAll() { holds.clear(); }
     /** let go of every key without forgetting what the task wants held (used while the game is paused) */
     public static void releaseKeys(Minecraft mc) {
@@ -422,6 +426,10 @@ public final class Controller {
             }
             if (Vis.isAirish(mc.level.getBlockState(pos))) {
                 Perception.MAP.see(pos, mc.level.getBlockState(pos));
+                // let go of the button THIS tick: held one tick longer, it starts on whatever is behind the block — in a
+                // tunnel that was the next column's floor-level block, opened before the one above it, and the lava
+                // behind it came pouring through a slit my eyes (1.6 m up, the block above still there) couldn't see into
+                if (t > 1) letGoOfAttack(mc);
                 return cleared > 0 ? "done (cleared " + cleared + " block(s) in the way)" : "done";
             }
             if (pl.getEyePosition().distanceTo(Vec3.atCenterOf(pos)) > 4.8) return "out_of_reach";
@@ -534,6 +542,8 @@ public final class Controller {
 
     public static final class Place implements Task {
         final BlockPos cell; final String item; int t = 0, tries = 0, idx = 0; List<Direction> faces; String why = "";
+        /** a reflex (plugging lava): click as soon as the crosshair is on a right face, don't settle the aim first */
+        public boolean quick = false;
         public Place(BlockPos cell, String item) { this.cell = cell; this.item = item; }
         public String describe() { return "place " + (item == null ? "held item" : item) + " at " + cell.toShortString(); }
         public String tick(Minecraft mc, LocalPlayer pl) {
@@ -579,9 +589,21 @@ public final class Controller {
                     if (!seen) continue;
                     faces.add(d);
                 }
-                faces.sort(Comparator.comparingDouble(d -> eye.distanceTo(Vec3.atCenterOf(cell).add(d.getStepX() * 0.5, d.getStepY() * 0.5, d.getStepZ() * 0.5))));
+                if (quick) // a reflex: the face I look at most squarely (a grazing side face kept missing: 14 ticks lost)
+                    faces.sort(Comparator.comparingDouble(d -> {
+                        Vec3 fc = Vec3.atCenterOf(cell).add(d.getStepX() * 0.5, d.getStepY() * 0.5, d.getStepZ() * 0.5);
+                        return eye.subtract(fc).normalize().dot(new Vec3(d.getStepX(), d.getStepY(), d.getStepZ()));   // most negative = face-on
+                    }));
+                else faces.sort(Comparator.comparingDouble(d -> eye.distanceTo(Vec3.atCenterOf(cell).add(d.getStepX() * 0.5, d.getStepY() * 0.5, d.getStepZ() * 0.5))));
                 if (faces.isEmpty()) return "no known solid face to place against within reach";
                 return null;
+            }
+            // a reflex: if the crosshair is already on a face that puts the block into the cell, click now (the eyes are
+            // on the hole I just opened; that's what a player's quick right-click does)
+            if (quick && t <= 3 && mc.hitResult instanceof BlockHitResult bh0 && mc.hitResult.getType() == HitResult.Type.BLOCK
+                    && bh0.getBlockPos().relative(bh0.getDirection()).equals(cell) && !mc.level.getBlockState(bh0.getBlockPos()).canBeReplaced()
+                    && (item == null || Perception.itemName(pl.getMainHandItem()).equals(item))) {
+                click(mc, "use"); return null;
             }
             if (!mc.level.getBlockState(cell).canBeReplaced()) {
                 Perception.MAP.see(cell, mc.level.getBlockState(cell));
@@ -594,7 +616,7 @@ public final class Controller {
             int k = idx % 5;
             Vec3 face = facePoint(cell, d, k == 1 ? 0.3 : k == 2 ? -0.3 : 0, k == 3 ? 0.3 : k == 4 ? -0.3 : 0);
             lookAt(pl, face);
-            if (aimError(pl, face) < 2f && t > 3) {
+            if (aimError(pl, face) < (quick ? 4f : 2f) && t > (quick ? 1 : 3)) {
                 HitResult hr = mc.hitResult;
                 // what matters is where the block would GO: clicked block + clicked face == our cell (and the clicked block
                 // isn't itself replaceable grass/litter, which would swallow the block instead)

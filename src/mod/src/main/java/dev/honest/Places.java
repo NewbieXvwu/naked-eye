@@ -29,14 +29,35 @@ public final class Places {
     /** named landmarks, set by the agent ("mark") */
     static final Map<String, BlockPos> MARKS = new LinkedHashMap<>();
 
+    /** marks of the other dimensions (MARKS holds the ones of the dimension I'm in) */
+    static final Map<String, Map<String, BlockPos>> OTHER_DIMS = new HashMap<>();
+    static String markDim = "overworld";
+    static void switchDim(String d) {
+        if (d.equals(markDim)) return;
+        OTHER_DIMS.put(markDim, new LinkedHashMap<>(MARKS));
+        MARKS.clear();
+        var m = OTHER_DIMS.remove(d); if (m != null) MARKS.putAll(m);
+        markDim = d; LAST.clear();
+    }
+    /** "home" was marked in the overworld, and I'm in the Nether: say so */
+    static String markElsewhere(String name) {
+        for (var e : OTHER_DIMS.entrySet()) if (e.getValue().containsKey(name)) return e.getKey().replace("the_", "the ");
+        return null;
+    }
+
     static final java.nio.file.Path MARK_FILE = java.nio.file.Path.of("honest_marks.txt");
     static void saveMarks() {
         StringBuilder sb = new StringBuilder();
-        for (var e : MARKS.entrySet()) sb.append(e.getKey()).append(' ').append(e.getValue().asLong()).append('\n');
+        for (var e : MARKS.entrySet()) sb.append(e.getKey()).append(' ').append(e.getValue().asLong()).append(' ').append(markDim).append('\n');
+        for (var d : OTHER_DIMS.entrySet()) for (var e : d.getValue().entrySet())
+            sb.append(e.getKey()).append(' ').append(e.getValue().asLong()).append(' ').append(d.getKey()).append('\n');
         try { java.nio.file.Files.writeString(MARK_FILE, sb); } catch (Exception ignored) {}
     }
-    static { // marks survive restarts, like the memory map does
-        try { for (String l : java.nio.file.Files.readAllLines(MARK_FILE)) { String[] t = l.split(" "); MARKS.put(t[0], BlockPos.of(Long.parseLong(t[1]))); } } catch (Exception ignored) {}
+    static { // marks survive restarts, like the memory map does ("name pos [dimension]"; no dimension = the overworld)
+        try { for (String l : java.nio.file.Files.readAllLines(MARK_FILE)) {
+            String[] t = l.split(" "); String d = t.length > 2 ? t[2] : "overworld";
+            (d.equals(markDim) ? MARKS : OTHER_DIMS.computeIfAbsent(d, k -> new LinkedHashMap<>())).put(t[0], BlockPos.of(Long.parseLong(t[1])));
+        } } catch (Exception ignored) {}
     }
 
     record Place(int id, List<int[]> cells, Set<Integer> out) {}

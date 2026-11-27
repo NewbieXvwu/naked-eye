@@ -44,6 +44,10 @@ public class HonestClient implements ClientModInitializer {
             // once in the world, start hidden unless asked to show (honest.show): saves power, the agent doesn't need it
             if (!startVisibilityDone && mc.player != null) { startVisibilityDone = true; if (!Boolean.getBoolean("honest.show")) setShown(false); }
             boolean frozen = mc.level != null && !mc.level.tickRateManager().runsNormally();
+            if (mc.level != null) {   // memory and marks belong to the dimension I'm in
+                String dim = mc.level.dimension().identifier().getPath();
+                if (!dim.equals(Perception.MAP.dimension())) { Perception.MAP.switchTo(dim); Places.switchDim(dim); }
+            }
             if (!frozen && mc.level != null) worldTicks++;
             try { Review.tick(mc); } catch (Throwable t) { LOG.warn("[honest] review pose failed", t); }   // (before the eyes look)
             if (Review.ON) {} else if (!frozen || !Pause.allow) Controller.tick(mc); else Controller.releaseKeys(mc);   // (pausing off: not my pause)

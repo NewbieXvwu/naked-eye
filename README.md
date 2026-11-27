@@ -203,6 +203,12 @@ MARK entrance: 17 m west (behind-left), same level — reachable (P1)
 - **聊天和分队**（`Talk.java`、`Chat.java`、`Teams.java`）：公屏、队内（`/teammsg`）、私信（`/msg`）都是原版机制，分队来自 `teams.txt`。收到的消息直接读原版的聊天类型，知道是谁说的、哪个频道、发给谁，不解析文字。聊天默认免费：在冻结的世界里也能随便聊，好看 AI 们为一个目标商量起来。打开 `chat_takes_time` 后，按连麦语速算时间，消息说完才送达。新消息会唤醒正在等待的 Agent。所有聊天都存进 `run/server/chat/*.jsonl`（`tools/chat.py`），观战者能看到队内消息和私信，Agent 被禁止通过游戏以外的方式交流。
 - **看见别的玩家**：名牌按原版规则显示，64 格内可以透墙、在黑暗里也能看到，对方潜行时就看不到了；观察结果里还有 Tab 名单和自己的队伍。死亡画面上的 Agent 也算"在想"，世界会等它决定是否重生。
 - 修了一个 bug：一个 Agent 如果曾被当成观战者（比如它在线时被暂时移出名单），旁观者模式会存进它的存档，之后就一直是旁观者。现在 Agent 一律改回生存模式。
+- **下界里被烫死**（用户在本地发现）：挖墙时挖到岩浆，没来得及堵就被烫死了。逐 tick 慢放后查出四个问题：
+  1. **挖完不松攻击键**：一格被挖穿时，挖矿任务直接跳到了下一格，负责挖这一格的 Dig 再也没被调用，也就没机会松开攻击键。于是 Agent 迈步时一直按着左键，准星扫过哪里就敲掉哪里，最先敲掉的往往是下一列脚那一格。这样就挖出一条只到脚面高的缝，头那一格还挡着，1.6 米高的眼睛根本看不见缝后面的岩浆。主世界也有这个问题，只是后果轻一些（多挖几块、偶尔引下沙砾）。
+  2. **发现太慢**：原来靠每 4 tick 一次的感知扫描，现在一挖开就看洞口。岩浆自己发光，只要视线没被挡住就能看见，所以这不算作弊。
+  3. **堵错格子、堵得太慢**：现在先堵岩浆已经流进来的那格，其次堵和脚同高的那格，堵完再看一遍。紧急放方块时，准星已经对上就立刻点，不然挑最正对自己的那个面（原来挑离得最近的面，常常是斜着的侧面，要试好几次，耗掉 14 tick）。实在堵不住就往回跑。下界岩浆每 10 tick 流一格，主世界是 30 tick。
+  4. **在下界不再尝试倒水**：水在下界会直接蒸发。
+  另外修了一个更大的问题：**方块记忆不分维度**。下界的 (5,100,6) 和主世界的 (5,100,6) 原来存在同一张图里，传送门建在出生点附近时，主世界记住的洞穴、水、岩浆会以幻影的形式出现在下界。现在每个维度各有一份记忆，存成 `honest_memory.the_nether.bin` 这样的文件；地点标记也按维度分开。下界有基岩顶，"上面看到过地面，下面就当成岩石"这条先验在下界关掉了。旧的混合记忆里，只有下界才有的方块会被自动挪过去。测试在 `tools/verify_nether.py`（N1–N6）。
 - **录像**：服务端给每个 Agent 各录一份，放在 `recordings/players/名字/`，录的是它自己周围的世界（别的 Agent 走进视距内也会被录进去）。修了三个问题：
   1. **关服时截断录像**，单 Agent 也中招：一个 Agent 退出时，它的录像在后台线程里打包成 .mcpr，而 stop.sh 紧接着就关服，JVM 一退出，打包就被打断了。当天的录像有一半因此损坏。现在 stop.sh 等所有录像打包完再关服。数据其实都还在 `.tmp` 目录里，`tools/replay_repair.py` 能把它们重新打包，start.sh 每次启动前也会自动修一遍。当天损坏的 25 份都已救回，抽一份从头放到尾检查过。
   2. **重连后不再录制**：中途加进来的 Agent 一旦掉线重连，就不录了。现在由服务端负责：每个 Agent 一进服就开录。
@@ -222,7 +228,7 @@ MARK entrance: 17 m west (behind-left), same level — reachable (P1)
 - `setup.sh` / `start.sh` / `stop.sh` / `window.sh` / `add_agent.sh`：下载、启动、停止、开关游戏窗口、往世界里再加一个 Agent。`tools/ports.py`：本副本的端口槽位。`launcher/mc.py` 是启动器，只用 Python 标准库。
 - `src/mod/`：客户端 mod（感知、动作、反射、暂停）；`src/pause-mod/`：服务端 mod（真暂停、附身观战）。改完用 `tools/build.sh` 编译，jar 会放进 `mods/`（需要 Java 25 和网络）。
 - `mods/`：编译好的三个 mod。其中 `baritone-honest.jar` 是改过的 Baritone（LGPL-3.0），源码在子模块 `src/baritone`，同时附了 `baritone-honest.patch`。许可证说明见 `THIRD_PARTY.md`。
-- `tools/hc`：Agent 的命令行；`tools/verify.py`：验收测试（实验者用）；`tools/verify_multi.py`：多 Agent 的测试（时钟、聊天、名牌、死亡；会临时再启动一个客户端）；`tools/chat.py`：读 Agent 之间的聊天；`tools/replay_repair.py`：重建没存完的录像；`tools/rcon.py`：实验者的 RCON；`tools/replay_cut.py`：剪掉录像里的思考时间；`tools/make_packages.sh` / `make_drive_parts.sh`：打联网版、离线版和小分段。
+- `tools/hc`：Agent 的命令行；`tools/verify.py`：验收测试（实验者用）；`tools/verify_multi.py`：多 Agent 的测试（时钟、聊天、名牌、死亡；会临时再启动一个客户端）；`tools/chat.py`：读 Agent 之间的聊天；`tools/replay_repair.py`：重建没存完的录像；`tools/verify_nether.py`：下界挖到岩浆、按维度记忆的测试；`tools/rcon.py`：实验者的 RCON；`tools/replay_cut.py`：剪掉录像里的思考时间；`tools/make_packages.sh` / `make_drive_parts.sh`：打联网版、离线版和小分段。
 - `agent/`：Agent 自己写的脚本，只调用诚实 API；`agent/claude-scripts/`：Claude 玩的时候顺手写的小工具。
 - `config/`：首次运行时用到的模板（客户端选项、服务器配置、Agent 名单 `naked-eye/agents.txt`）。
 - `AGENTS.md`：给任何一家 AI 看的说明和规则；`.claude/skills/naked-eye-playbook/`：Claude 的打法手册。

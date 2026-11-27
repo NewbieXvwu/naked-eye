@@ -262,6 +262,7 @@ public final class Api {
                     String id = a.get("id").getAsString();
                     BlockPos t = Places.LAST.get(id);
                     if (t == null) t = Places.MARKS.get(id);
+                    if (t == null && Places.markElsewhere(id) != null) return "'" + id + "' is a mark in " + Places.markElsewhere(id) + ", not here";
                     if (t == null) return "unknown id '" + id + "' — list places first";
                     Controller.start(mc, new BaritoneBridge.Go(t));
                 }
