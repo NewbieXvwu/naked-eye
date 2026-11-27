@@ -449,37 +449,12 @@ public final class Api {
 
     static String hurtCause(net.minecraft.client.player.LocalPlayer p) {
         java.util.List<String> c = new java.util.ArrayList<>();
-        if (p.isInWall()) c.add("my head is stuck inside a block (suffocating)");
-        if (p.isOnFire()) c.add("I'm on fire");
-        if (p.isInLava()) c.add("I'm IN LAVA");
-        if (p.isUnderWater() && p.getAirSupply() <= 0) c.add("drowning");
-        if (p.getFoodData().getFoodLevel() == 0) c.add("starving");
-        var lvl = Minecraft.getInstance().level;
-        for (var e : lvl.getEntities(p, p.getBoundingBox().inflate(4)))
-            if (e instanceof net.minecraft.world.entity.monster.Enemy && Perception.anyPointVisible(lvl, p.getEyePosition(), e.getBoundingBox()))
-                c.add("a " + net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(e.getType()).getPath() + " right next to me");
-        if (c.isEmpty() && (p.fallDistance > 3 || Events.heardRecently("falls on a block", 8) || Events.heardRecently("Something trips", 8))) c.add("fell");
-        if (Events.heardRecently("Explosion", 4)) c.add("an explosion just went off nearby (a creeper?)");
-        // the roundabout clues a player has: arrows/stingers stuck in your model (press E / F5 to see them),
-        // the direction the screen tilts when hit, and which way the knockback shoved you
-        int arrows = p.getArrowCount(), stingers = p.getStingerCount();
-        if (arrows > lastArrows) c.add("an arrow is stuck in me now (" + arrows + " in total)");
-        if (stingers > lastStingers) c.add("a bee stinger is stuck in me");
-        lastArrows = arrows; lastStingers = stingers;
-        // vanilla sends yaw 0 for damage with no source position (suffocation, starving…): no direction then
-        if (!p.isInWall() && !p.isOnFire() && p.hurtTime > 0 && p.getHurtDir() != 0f) {
-            double a = Math.toRadians(p.getHurtDir() + p.getYRot());          // vanilla: atan2(dz,dx) of source - yaw
-            String from = Places.compass(Math.cos(a), Math.sin(a));
-            double rel = net.minecraft.util.Mth.wrapDegrees(Math.toDegrees(Math.atan2(-Math.cos(a), Math.sin(a))) - p.getYRot());
-            String[] b = {"ahead", "ahead-right", "right", "behind-right", "behind", "behind-left", "left", "ahead-left"};
-            String side = b[Math.floorMod((int) Math.round(rel / 45.0), 8)];
-            var v = p.getDeltaMovement();
-            String shove = Math.hypot(v.x, v.z) > 0.05 ? ", knocked toward the " + Places.compass(v.x, v.z) : "";
-            c.add("the hit came from the " + from + " (" + side + ")" + shove);
-        }
+        String what = Hurt.cause(p);
+        if (what != null) c.add(what);
+        var v = p.getDeltaMovement();
+        if (!c.isEmpty() && p.hurtTime > 0 && Math.hypot(v.x, v.z) > 0.05) c.add("knocked toward the " + Places.compass(v.x, v.z));
         return c.isEmpty() ? " — cause not obvious" : " — " + String.join(", ", c);
     }
-    static int lastArrows = 0, lastStingers = 0;
 
     static Map<String, String> query(HttpExchange ex) {
         Map<String, String> m = new HashMap<>();

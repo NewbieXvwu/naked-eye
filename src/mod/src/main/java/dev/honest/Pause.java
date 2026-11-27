@@ -66,13 +66,6 @@ public final class Pause {
             paused = "the game was already paused when I (re)joined"; pausedKind = idle ? "idle" : "manual"; pausedAtMs = System.currentTimeMillis();
         }
         if (paused != null && !"idle".equals(pausedKind) && System.currentTimeMillis() - pausedAtMs > 180_000) resume("auto-resumed after 3 minutes with no decision");
-        // a hurt that came with no visible cause, followed a tick later by an explosion sound: that was the cause
-        // the sound of what hurt me often lands a tick after the hurt itself: fill in the cause when it does
-        if (paused != null && "hurt".equals(pausedKind) && paused.contains("cause not obvious")) {
-            String c = Events.heardRecently("Explosion", 6) ? "an EXPLOSION went off nearby (a creeper I never saw?)"
-                     : Events.heardRecently("fell", 6) || Events.heardRecently("falls on a block", 6) ? "I fell" : null;
-            if (c != null) { paused = paused.replace("cause not obvious", c); Events.note("pause", "(that hurt: " + c + ")"); }
-        }
         if (allow && paused == null && !pl.isDeadOrDying()) {
             String why = null, kind = null;
             var hiss = Events.recentSound("Creeper hisses", 3);   // "Creeper hisses": the 1.5 s fuse has started somewhere near

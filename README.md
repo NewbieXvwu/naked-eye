@@ -200,7 +200,8 @@ MARK entrance: 17 m west (behind-left), same level — reachable (P1)
 
 - **各玩各的**：一份仓库副本就是一个实例。`tools/ports.py` 给每份副本分一个槽位，所有端口整体 `+100 × 槽位`，游戏文件共用 `~/.cache/naked-eye`。用法见 `PORTABLE.md`。
 - **同一个世界多 Agent**：`./add_agent.sh 名字` + `HC_AGENT=名字 tools/hc …`。服务端每秒重读一次 `agents.txt`，新名字自动算作 Agent，不当成观战者；录像会给它单独开一条。还没定的是**时间模型**：思考暂停冻结的是整个世界，所以眼下只要有第二个 Agent 在场，客户端就自动关掉暂停，世界按实时运行。可选的规则有三种：实时、任何人思考都冻结、回合制锁步。等真要比赛时再选。
-- 顺手修了一个 bug：摔伤时字幕里明明有"Something falls on a block"，原因却报"not obvious"。查找最近声音时，碰到不带 tick 的"⏸ PAUSED"条目就提前停下了。
+- **伤因不再靠猜**（`Hurt.java`）：以前是拿字幕字符串（"falls on a block""Explosion"）加上 fallDistance 拼出来的，又脆又不准。现在直接读服务器每次伤害都会发给客户端的伤害事件（`ClientboundDamageEventPacket`，原版靠它决定屏幕往哪边歪），里面有伤害类型、攻击者和来源位置。对 Agent 的规则：伤害类型直接告诉它（人总知道自己是摔的、烧的还是饿的，死亡信息也会写明）；攻击者只有这一刻在画面上才说出名字，判断标准和 `obs` 是同一套；方向只给八个方位之一，相当于屏幕歪的那一下。测试见 T17。
+- 同时堵住了一个旧漏洞：原来的"a zombie right next to me"只检查有没有东西挡着，不检查视野，所以背后的怪也会被报出来。
 
 ## 这一版踩到的坑
 

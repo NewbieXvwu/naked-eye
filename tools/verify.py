@@ -262,6 +262,37 @@ post({"type": "pause_policy", "allow": False})
 check("T16 idle pause: the world waits while I think (no ticks pass), and runs while I act",
       g1 == g0 and g2 - g1 >= 30 and g3 - g2 <= 6, f"thinking 2 s: +{g1-g0} ticks; acting: +{g2-g1}; after: +{g3-g2}")
 
+# T17: what hurt me — read from the damage event the server sends with each hit, not guessed from subtitles:
+# the kind is always told (a player feels a landing); who did it only if it's on my screen; where from, one of 8 sides
+import threading
+def hurt_by(*cmds, ticks=40):
+    out = {}
+    t = threading.Thread(target=lambda: out.update(post({"type": "wait", "wait": ticks}))); t.start()
+    time.sleep(0.4); rcon(list(cmds)); t.join()
+    rcon(["effect give Agent instant_health 1 10 true"]); settle(25)   # (and outlast the hurt-immunity ticks)
+    return out.get("woke") or ""
+arena()
+rcon(["summon zombie 15.5 200 21.5 {NoAI:1b,Silent:1b,Invulnerable:1b,Tags:[t17z]}",
+      "summon skeleton 15.5 200 9.5 {NoAI:1b,Silent:1b,Invulnerable:1b,Tags:[t17s]}",
+      "summon arrow 15.5 201 12.5 {NoGravity:1b,Tags:[t17a]}",
+      "attribute Agent minecraft:knockback_resistance base set 1", "tp Agent 15.5 205 15.5"])
+time.sleep(1.5); rcon(["effect clear Agent"]); settle(10)
+fell = hurt_by("tp Agent 15.5 206 15.5 facing 15.5 201 21.5", ticks=60)
+rcon(["tp Agent 15.5 200 15.5 facing 15.5 201 21.5"]); settle(10)
+seen_hit = hurt_by("damage Agent 3 minecraft:mob_attack by @e[tag=t17z,limit=1]")
+rcon(["tp Agent 15.5 200 15.5 facing 25.5 201 15.5"]); settle(10)   # facing east: the zombie (south) is on my right, out of view
+unseen_hit = hurt_by("damage Agent 3 minecraft:mob_attack by @e[tag=t17z,limit=1]")
+rcon(["tp Agent 15.5 200 15.5 facing 15.5 201 21.5"]); settle(10)   # skeleton and its arrow behind me
+arrow = hurt_by("damage Agent 3 minecraft:arrow by @e[tag=t17a,limit=1] from @e[tag=t17s,limit=1]")
+cactus = hurt_by("damage Agent 3 minecraft:cactus")
+rcon(["kill @e[tag=t17z]", "kill @e[tag=t17s]", "kill @e[tag=t17a]", "attribute Agent minecraft:knockback_resistance base set 0"])
+check("T17 hurt cause: the kind of damage, the attacker only if on screen, and the side it came from",
+      "I fell" in fell and "zombie #" in seen_hit and "ahead" in seen_hit
+      and "can't see" in unseen_hit and "zombie" not in unseen_hit and "(right)" in unseen_hit
+      and "an arrow from something I can't see" in arrow and "skeleton" not in arrow and "behind" in arrow
+      and "cactus" in cactus,
+      f"fall: {fell!r} | zombie ahead: {seen_hit!r} | zombie right: {unseen_hit!r} | arrow from behind: {arrow!r} | cactus: {cactus!r}")
+
 # leave the world as we found it: agent back where it was with its hotbar, gamerules restored
 rcon([f"item replace entity Agent hotbar.{k} with " + (f"{_held[k]['item']} {_held[k]['count']}" if k in _held else "air") for k in (0, 1)])
 _p = _start["pos"]

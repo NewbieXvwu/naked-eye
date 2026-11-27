@@ -49,17 +49,6 @@ public final class Events {
         }
         return null;
     }
-    public static synchronized boolean heardRecently(String what, int ticks) {
-        for (var it = LOG.descendingIterator(); it.hasNext(); ) {
-            JsonObject o = it.next();
-            var pl = net.minecraft.client.Minecraft.getInstance().player;
-            if (pl == null) break;
-            if (!o.has("tick")) continue;   // (notes like "⏸ PAUSED" carry no tick: look past them, don't stop there)
-            if (HonestClient.ticks - o.get("tick").getAsLong() > ticks) break;
-            if (o.has("subtitle") && o.get("subtitle").getAsString().contains(what)) return true;
-        }
-        return false;
-    }
 
     /** Called from our SoundManager hook, same arguments vanilla gives the subtitle overlay. */
     public static void onSound(SoundInstance s, WeighedSoundEvents ev, float range) {
