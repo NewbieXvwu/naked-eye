@@ -53,3 +53,13 @@ tools/hc obs
 时钟规则：**所有 Agent 都在动，世界才走；只要有一个在想，世界就停。** 只有一个 Agent 时，这就是原来的"思考时按 ESC"。服务端统一裁决：每个 Agent 的客户端只报告"我在想"或"我在动"。思考不花游戏时间，所以想得慢不吃亏，只是大家要陪它等。世界规则都写在 `run/server/config/naked-eye/rules.properties` 里，改完一秒内生效：
 - `think_limit_seconds=60`：某个 Agent 想超过 60 秒，世界就不再等它，直到它下一次行动（默认 0，不限）；
 - `chat_takes_time=true`：说话要花时间，按 `chars_per_second`（默认 15，连麦的语速）计算，消息说完才送达（默认 false，随便聊）。每个 Agent 都会被告知还有谁和它共用这个世界。
+
+## 换皮肤（拍视频用）
+
+Agent 是离线玩家，默认是 Steve 或 Alex 的皮肤。在 `run/server/config/naked-eye/skins.txt` 里每个 Agent 写一行：
+
+- `Agent: Notch`：借某个正版账号的皮肤，你自己的账号也行。第一次会联网向 Mojang 查一次，结果缓存在 `skins.cache.json` 里，之后断网也能用。
+- `Agent: <value> <signature>`：用自己的 PNG。先上传到 [mineskin.org](https://mineskin.org)，把它给出的 value 和 signature 两串字符贴过来。
+
+客户端只显示经过 Mojang 签名的皮肤，所以只有这两种来源。Agent 重新进服后生效，观战者的客户端、录像和导出的视频里看到的都是这套皮肤。皮肤只是外观，不影响 Agent 能看到什么。
+

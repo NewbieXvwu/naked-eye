@@ -3,6 +3,6 @@
   "package": "dev.honest.pause.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [ "TickRateManagerMixin" ],
-  "server": [ "ServerGamePacketListenerImplMixin", "WatcherActionsMixin" ],
+  "server": [ "ServerGamePacketListenerImplMixin", "WatcherActionsMixin", "OfflineProfileMixin" ],
   "injectors": { "defaultRequire": 1 }
 }

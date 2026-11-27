@@ -1,0 +1,7 @@
+# Skins for the agents (otherwise they're Steve and Alex), for watchers and videos. One line per agent:
+#
+#   Agent: Notch                      wear the skin of that Minecraft account (looked up once, needs the internet)
+#   Bob: <value> <signature>          a skin of your own: upload the PNG at https://mineskin.org, copy its
+#                                     "value" and "signature" here (works without internet)
+#
+# Takes effect when the agent (re)joins. Clients only show skins Mojang has signed, so it's always one of those two.

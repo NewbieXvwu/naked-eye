@@ -395,6 +395,8 @@ public final class Api {
         LocalPlayer pl = mc.player;
         if (pl == null) return o;
         o.add("all_entities_client_knows", Perception.entities(mc, pl, mc.level, false));
+        var me = mc.getConnection() == null ? null : mc.getConnection().getPlayerInfo(pl.getUUID());
+        if (me != null) o.addProperty("my_skin", String.valueOf(me.getSkin()));   // (for the skins.txt check)
         Map<String, Integer> ores = new TreeMap<>(), knownOres = new TreeMap<>();
         BlockPos c = pl.blockPosition();
         for (BlockPos p : BlockPos.betweenClosed(c.offset(-32, -32, -32), c.offset(32, 32, 32))) {
