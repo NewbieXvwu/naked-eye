@@ -50,6 +50,7 @@ public class HonestClient implements ClientModInitializer {
             try { ArrowLog.tick(mc); } catch (Throwable t) { LOG.warn("[honest] arrow log failed", t); }
             try { Pause.tick(mc); } catch (Throwable t) { LOG.warn("[honest] pause check failed", t); }
             if (!Review.ON) try { FlightLog.tick(mc); } catch (Throwable t) { LOG.warn("[honest] flight log failed", t); }
+            try { Talk.tick(); } catch (Throwable t) { LOG.warn("[honest] talk failed", t); }
             try { Api.tickWaits(mc); } catch (Throwable t) { LOG.warn("[honest] wait check failed", t); }   // wakes waiting requests
             // (frozen: nothing in the world can change, so the eyes rest — that was half a CPU core while thinking)
             if (++ticks % 4 == 0 && mc.player != null && mc.level != null && !frozen) {
@@ -66,6 +67,7 @@ public class HonestClient implements ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register(mc -> { if (ticks % 1200 == 0) Perception.MAP.save(mem); });
         ClientLifecycleEvents.CLIENT_STOPPING.register(mc -> { Perception.MAP.save(mem); FlightLog.close(); });
         ClientReceiveMessageEvents.GAME.register((msg, overlay) -> { if (!overlay) Events.onChat(msg, "game_message"); });
-        ClientReceiveMessageEvents.CHAT.register((msg, signed, sender, params, ts) -> Events.onChat(msg, "chat"));
+        ClientReceiveMessageEvents.CHAT.register((msg, signed, sender, params, ts) -> Talk.onChat(msg, signed, params));
+        dev.honest.pause.Rules.onSync(Talk::onRules);
     }
 }

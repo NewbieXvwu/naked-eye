@@ -2,7 +2,7 @@
 # Put another agent into this world (several agents, one world): ./add_agent.sh NAME
 # Then drive it with  HC_AGENT=NAME tools/hc …  (each agent gets its own client, API port, flight log and replay).
 # One clock for all: the world runs only while every agent is acting, and stands still while any of them thinks.
-# To stop a slow thinker from holding everyone up: run/server/config/naked-eye/clock.properties, think_limit_seconds=N.
+# World rules (thinking limit, whether talking takes time): run/server/config/naked-eye/rules.properties. Teams: teams.txt.
 cd "$(dirname "$0")"
 NAME="$1"; [ -z "$NAME" ] && { echo "usage: $0 NAME"; exit 2; }
 [ -f run/server.pid ] && kill -0 "$(cat run/server.pid)" 2>/dev/null || { echo "start the world first: ./start.sh"; exit 1; }

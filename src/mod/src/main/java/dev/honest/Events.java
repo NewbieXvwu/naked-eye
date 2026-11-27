@@ -23,7 +23,7 @@ public final class Events {
     private static final Deque<JsonObject> LOG = new ArrayDeque<>();
     private static long seq = 0;
 
-    static synchronized void push(JsonObject o) {
+    public static synchronized void push(JsonObject o) {
         o.addProperty("seq", ++seq);
         LOG.addLast(o);
         FlightLog.write("event", o.deepCopy());

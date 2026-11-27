@@ -48,4 +48,8 @@ tools/hc obs
 - 给不同家的 AI 用的话，每家各进一个副本目录，互相看不到对方的世界。
 
 **同一个世界里放好几个 Agent（预留接口，规则还没定）**：`./add_agent.sh 名字`，然后用 `HC_AGENT=名字 tools/hc …` 操作它。每个 Agent 有自己的客户端、API 端口（7002、7004……）、飞行日志和录像；观战者照样可以 `/watch 名字` 附身。
-时钟规则：**所有 Agent 都在动，世界才走；只要有一个在想，世界就停。** 只有一个 Agent 时，这就是原来的"思考时按 ESC"。服务端统一裁决：每个 Agent 的客户端只报告"我在想"或"我在动"。思考不花游戏时间，所以想得慢不吃亏，只是大家要陪它等。如果不想等，可以在 `run/server/config/naked-eye/clock.properties` 里写 `think_limit_seconds=60`：超过 60 秒还没动，世界就不再等它，直到它下一次行动。每个 Agent 都会被告知还有谁和它共用这个世界。
+分队和聊天：在 `run/server/config/naked-eye/teams.txt` 里写 `red: Agent, Bob` 这样一行一队（可选 `friendly_fire: true`），用的是原版的队伍机制。Agent 用 `hc say` / `hc team` / `hc tell 名字` 分别发公屏、队内、私信。所有聊天都存在 `run/server/chat/`，用 `python3 tools/chat.py` 看对话；观战者在游戏里也能看到队内消息和私信（灰色）。
+
+时钟规则：**所有 Agent 都在动，世界才走；只要有一个在想，世界就停。** 只有一个 Agent 时，这就是原来的"思考时按 ESC"。服务端统一裁决：每个 Agent 的客户端只报告"我在想"或"我在动"。思考不花游戏时间，所以想得慢不吃亏，只是大家要陪它等。世界规则都写在 `run/server/config/naked-eye/rules.properties` 里，改完一秒内生效：
+- `think_limit_seconds=60`：某个 Agent 想超过 60 秒，世界就不再等它，直到它下一次行动（默认 0，不限）；
+- `chat_takes_time=true`：说话要花时间，按 `chars_per_second`（默认 15，连麦的语速）计算，消息说完才送达（默认 false，随便聊）。每个 Agent 都会被告知还有谁和它共用这个世界。

@@ -47,7 +47,7 @@ try:
     check("C5 Tester2 now thinks: Agent's pending action waits for it", g5 == g4, f"+{g5 - g4} ticks in 2 s")
 
     # a thinking time limit: past it, the world goes on without the slow one
-    f = os.path.join(ROOT, "run", "server", "config", "naked-eye", "clock.properties")
+    f = os.path.join(ROOT, "run", "server", "config", "naked-eye", "rules.properties")
     open(f, "w").write("think_limit_seconds=2\n")
     time.sleep(5); g6 = gametime(); time.sleep(2); g7 = gametime()
     told = any("the limit here" in (e.get("text") or "") for e in
@@ -55,12 +55,83 @@ try:
     check("C6 with a 2 s limit, the world goes on without the agent thinking too long (and it's told)",
           g7 - g6 >= 20 and told, f"+{g7 - g6} ticks in 2 s; Tester2 told: {told}")
     os.remove(f)
+    # release both (Tester2's thinking ran out; give the world back to the rules)
+    t = threading.Thread(target=post, args=(B, {"type": "wait", "wait": 3})); t.start(); post(A, {"type": "wait", "wait": 10}); t.join()
+
+    # ---------------------------------------------------------------- talking (free chat: the default)
+    cfg = os.path.join(ROOT, "run", "server", "config", "naked-eye")
+    def heard(port, since):
+        ev = json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/observe?cursor={since}"))["events"]
+        return [e for e in ev if e.get("kind") == "chat" and "channel" in e]
+    def cur(port): return json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/observe"))["cursor"]
+    open(os.path.join(cfg, "teams.txt"), "w").write("red: Agent, Tester2\n")
+    time.sleep(2.5)
+    c0 = cur(B); g0 = gametime()
+    post(A, {"type": "say", "channel": "public", "text": "hello everyone"})
+    post(A, {"type": "say", "channel": "team", "text": "red team, follow me"})
+    post(A, {"type": "say", "channel": "private", "to": "Tester2", "text": "just between us"})
+    time.sleep(1); h = heard(B, c0); g1 = gametime()
+    got = {(e["channel"], e["from"], e["text"]) for e in h}
+    check("C7 free chat: public, team and private all arrive, with who and which channel, and no world time passes",
+          {("public", "Agent", "hello everyone"), ("team", "Agent", "red team, follow me"), ("private", "Agent", "just between us")} <= got and g1 == g0,
+          f"Tester2 heard {sorted(got)}; +{g1 - g0} ticks")
+    open(os.path.join(cfg, "teams.txt"), "w").write("red: Agent\nblue: Tester2\n")
+    time.sleep(2.5); c0 = cur(B)
+    post(A, {"type": "say", "channel": "team", "text": "secret red plan"}); time.sleep(1)
+    check("C8 team chat stays in the team", not any("secret" in e["text"] for e in heard(B, c0)), f"Tester2 heard {heard(B, c0)}")
+    out = {}
+    t = threading.Thread(target=lambda: out.update(post(B, {"type": "wait", "wait": 400}, None))); t.start(); time.sleep(1)
+    post(A, {"type": "say", "channel": "public", "text": "Tester2, are you there?"}); t.join(10)
+    check("C9 a message wakes an agent waiting for its action", "a message" in out.get("woke", ""), f"Tester2's wait: woke={out.get('woke')!r}")
+    logs = sorted(os.listdir(os.path.join(ROOT, "run", "server", "chat")))
+    kept = open(os.path.join(ROOT, "run", "server", "chat", logs[-1])).read()
+    check("C10 every message is kept in run/server/chat/", "just between us" in kept and "secret red plan" in kept,
+          f"{logs[-1]}: {kept.count(chr(10))} lines")
+
+    # ---------------------------------------------------------------- talking takes time (the switch)
+    open(f, "w").write("chat_takes_time=true\nchars_per_second=15\n"); time.sleep(2.5)
+    out = {}
+    t = threading.Thread(target=lambda: out.update(post(B, {"type": "wait", "wait": 400}, None))); t.start(); time.sleep(1)
+    g0 = gametime(); r = post(A, {"type": "say", "channel": "public", "text": "hello there friend"}, None); t.join(10); g1 = gametime()
+    os.remove(f); time.sleep(2.5)
+    check("C11 with chat_takes_time, saying 18 characters takes ~34 ticks of world time, then it arrives",
+          30 <= g1 - g0 <= 50 and "hello there friend" in out.get("woke", ""), f"+{g1 - g0} ticks; {r.get('result')!r}; Tester2 woke={out.get('woke')!r}")
+
+    # ---------------------------------------------------------------- seeing other players
+    rcon(["fill 109 200 103 111 203 108 stone", "tp Agent 105.5 200 105.5 facing 115.5 201 105.5", "tp Tester2 115.5 200 105.5"])
+    t = threading.Thread(target=post, args=(B, {"type": "wait", "wait": 10})); t.start(); post(A, {"type": "wait", "wait": 10}); t.join()
+    o = json.load(urllib.request.urlopen(f"http://127.0.0.1:{A}/observe"))
+    tags = [e for e in o["entities"] if e.get("name") == "Tester2"]
+    check("C12 another player's name tag shows through a wall (as in the game), with its team",
+          tags and tags[0].get("detail") == "only_name_tag_visible" and tags[0].get("team") == "blue"
+          and any(p["name"] == "Tester2" for p in o.get("players_online", [])), f"{tags} | online: {o.get('players_online')}")
+    t = threading.Thread(target=post, args=(B, {"type": "hold", "keys": ["sneak"], "ticks": 80, "wait": 82}, None)); t.start()
+    post(A, {"type": "wait", "wait": 15})
+    o = json.load(urllib.request.urlopen(f"http://127.0.0.1:{A}/observe"))
+    check("C13 ... but not while they sneak", not [e for e in o["entities"] if e.get("name") == "Tester2"], f"{[e for e in o['entities'] if e.get('type') == 'player']}")
+    threading.Thread(target=post, args=(A, {"type": "wait", "wait": 200}, None), daemon=True).start(); t.join(15)   # (my next action ends this wait)
+    rcon(["fill 109 200 103 111 203 108 air"])
+
+    # ---------------------------------------------------------------- a dead agent is thinking too
+    rcon(["kill Tester2"]); time.sleep(1)
+    done = threading.Event()
+    threading.Thread(target=lambda: (post(A, {"type": "wait", "wait": 20}, None), done.set()), daemon=True).start()
+    time.sleep(2); g0 = gametime(); time.sleep(2); g1 = gametime()
+    post(B, {"type": "respawn"}); post(B, {"type": "wait", "wait": 10}); done.wait(10)   # (shorter than the Agent's wait: it must end first)
+    check("C14 on the death screen the world waits for the dead agent's decision", g1 == g0 and done.is_set(), f"+{g1 - g0} ticks while Tester2 lay dead; Agent's wait finished after the respawn: {done.is_set()}")
 finally:
+    for n in ("teams.txt", "rules.properties"):
+        p = os.path.join(ROOT, "run", "server", "config", "naked-eye", n)
+        if os.path.exists(p): os.remove(p)
+    rcon(["team remove red", "team remove blue"])
     pid = os.path.join(ROOT, "run", "client-Tester2.pid")
     if os.path.exists(pid):
         try: os.kill(int(open(pid).read()), 15)
         except Exception: pass
         os.remove(pid)
+    for _ in range(30):   # (gone from the server before it leaves the list, or it'd be turned into a watcher on the way out)
+        if "Tester2" not in "".join(rcon(["list"])): break
+        time.sleep(1)
     rcon(["forceload remove 100 100 120 120"])
     a = os.path.join(ROOT, "run", "server", "config", "naked-eye", "agents.txt")   # (Tester2 was only visiting)
     keep = [l for l in open(a) if l.strip() != "Tester2"]

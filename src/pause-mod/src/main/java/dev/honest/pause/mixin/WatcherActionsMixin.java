@@ -25,12 +25,24 @@ public abstract class WatcherActionsMixin {
         if (player != null && Watch.locked(player)) ci.cancel();
     }
 
-    /** watchers don't talk: the agents would hear it (commands like /watch still work) */
+    /** watchers don't talk: the agents would hear it (commands like /watch still work). What agents say is kept. */
     @Inject(method = "handleChat", at = @At("HEAD"), cancellable = true)
-    private void nakedEye$noCoaching(CallbackInfo ci) {
-        if (player != null && Watch.isWatcher(player)) {
-            ci.cancel();
-            player.level().getServer().execute(() -> player.sendSystemMessage(Component.literal("Watchers can't chat: the agents would hear it.")));
-        }
+    private void nakedEye$noCoaching(net.minecraft.network.protocol.game.ServerboundChatPacket p, CallbackInfo ci) {
+        if (player == null) return;
+        if (Watch.isWatcher(player)) { ci.cancel(); muted(); return; }
+        dev.honest.pause.Chat.sent(player, p.message(), false);
+    }
+    @Inject(method = "handleChatCommand", at = @At("HEAD"), cancellable = true)
+    private void nakedEye$command(net.minecraft.network.protocol.game.ServerboundChatCommandPacket p, CallbackInfo ci) { command(p.command(), ci); }
+    @Inject(method = "handleSignedChatCommand", at = @At("HEAD"), cancellable = true)
+    private void nakedEye$signedCommand(net.minecraft.network.protocol.game.ServerboundChatCommandSignedPacket p, CallbackInfo ci) { command(p.command(), ci); }
+
+    private void command(String c, CallbackInfo ci) {
+        if (player == null) return;
+        if (Watch.isWatcher(player)) { if (dev.honest.pause.Chat.talking(c)) { ci.cancel(); muted(); } return; }
+        dev.honest.pause.Chat.sent(player, c, true);
+    }
+    private void muted() {
+        player.level().getServer().execute(() -> player.sendSystemMessage(Component.literal("Watchers can't chat: the agents would hear it.")));
     }
 }

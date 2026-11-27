@@ -24,6 +24,9 @@
   hc upstairs DIR N [a,b]     dig a staircase UP (enclosed way out of a hole)
                               4th arg: ores to mine on the way without stopping, e.g. coal_ore,iron_ore
   hc note TEXT                commentary for the record (and anyone watching): how it's going, what's next
+  hc say TEXT                 talk to everyone (public chat)      — other agents only; see AGENTS.md
+  hc team TEXT                talk to my team only
+  hc tell NAME TEXT           a private message to one player
   hc watch [sec]              keep waiting on the current task; returns when it ends or on alarm
   hc goy Y [a,b]              get to Y level, digging stairs through assumed rock; stop if a/b seen
   hc go X Y Z [a,b]           (optional 4th arg: stop as soon as a block containing a or b is in view)
@@ -85,10 +88,15 @@ def fmt(o):
         desc = ", ".join(f"{k}={v}" for k, v in extra.items())
         out.append(f"  #{e['id']} {e['type']}{(' ('+e['item']+')') if 'item' in e else ''} ~{e['dist']}m {side}, elev {e['elevation']}° "
                    f"≈{e['approx_pos']}" + (f"  looks: {desc}" if desc else "") + (f"  gear: {gear}" if gear else "")
-                   + ("  (too far to make out)" if e.get("detail") else ""))
+                   + (f"  name {e['name']}" + (f" [team {e['team']}{', teammate' if e.get('teammate') else ''}]" if 'team' in e else "") if 'name' in e else "")
+                   + ("  (only the name tag shows: behind a wall or in the dark)" if e.get("detail") == "only_name_tag_visible"
+                      else "  (too far to make out)" if e.get("detail") else ""))
     for l in o.get("recently_lost_sight_of", []):
         out.append(f"  ↶ lost #{l['id']} {l['type']} {l['lost_s_ago']}s ago: {l['how']}, was ~{l['last_dist']}m"
                    + (f", moving {l['was_moving']}" if 'was_moving' in l else "") + f"; now {l['probably_now']}")
+    if o.get("players_online"):
+        out.append("players online: " + ", ".join(p["name"] + (f" [{p['team']}]" if "team" in p else "") + (" (me)" if p.get("me") else "")
+                                                for p in o["players_online"]))
     bv = o.get("blocks_in_view", [])
     if bv:
         out.append("blocks in view (nearest): " + ", ".join(f"{b['block']}@{b['nearest']}~{b['dist']}m" for b in bv[:14])
@@ -98,6 +106,9 @@ def fmt(o):
     for ev in o.get("events", []):
         if ev["kind"] == "sound":
             l = f"  🔊 {ev['subtitle']} ({ev.get('loudness','')}, {ev.get('direction','?')})"
+        elif ev["kind"] == "chat" and "channel" in ev:
+            where = {"public": "", "team": f" [team {ev.get('to','')}]", "private": f" [private → {ev.get('to','')}]"}[ev["channel"]]
+            l = f"  🗨 {ev['from']}{where}: {ev['text']}"
         else:
             l = f"  💬 [{ev['kind']}] {ev['text']}"
         if lines and lines[-1][0] == l: lines[-1][1] += 1
@@ -256,6 +267,13 @@ def main(a):
     elif c == "stop": act({"type": "stop"}, 2)
     elif c == "wait": act({"type": "wait"}, int(x[0]) if x else 20)
     elif c == "say": act({"type": "chat", "text": " ".join(x)}, 10)
+    elif c in ("say", "team", "tell"):   # talking to other agents (free, or it takes the time to say it: the world's rule)
+        if c == "tell": to, x = x[0], x[1:]
+        a = {"type": "say", "channel": {"say": "public", "team": "team", "tell": "private"}[c], "text": " ".join(x)}
+        if c == "tell": a["to"] = to
+        r = post(a); print(r.get("result")); 
+        if "woke" in r: print("woke early:", r["woke"])
+        if "observation" in r: fmt(r["observation"])
     elif c == "note":   # commentary, like subtitles: how it's going and what I'm about to do (doesn't unpause)
         if not x: print('usage: hc note "how it\'s going, what\'s next"'); return
         act({"type": "note", "text": " ".join(x)}, 0)

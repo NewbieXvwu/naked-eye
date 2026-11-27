@@ -205,7 +205,8 @@ public final class Api {
             if (pl == null) return "not in world";
             // any decision from the brain = un-pause (like closing the ESC menu); "pause" itself and pure policy changes don't
             boolean keep = a.has("keep_paused") && a.get("keep_paused").getAsBoolean();   // frame-by-frame play
-            if (Pause.paused != null && !keep && !type.equals("pause") && !type.equals("pause_policy") && !type.equals("note")) {
+            if (Pause.paused != null && !keep && !type.equals("pause") && !type.equals("pause_policy") && !type.equals("note")
+                    && !(type.equals("say") && !Talk.takesTime)) {   // (free chat: talk while the world stands still)
                 // only a deliberate decision un-pauses; a script blindly carrying on with its plan must not
                 // (it happened: a wood-gathering script kept clicking through the pause while a skeleton shot me dead)
                 // a thinking pause is lifted by any action at all; an ALARM pause only by a deliberate one
@@ -322,6 +323,8 @@ public final class Api {
                 case "stop" -> Controller.stop(mc);
                 case "chat" -> { String t = a.get("text").getAsString();   // "/x" is a command, as when typed in the chat box
                     if (t.startsWith("/")) pl.connection.sendCommand(t.substring(1)); else pl.connection.sendChat(t); }
+                case "say" -> { return Talk.say(a.has("channel") ? a.get("channel").getAsString() : "public",
+                                                 a.has("to") ? a.get("to").getAsString() : null, a.get("text").getAsString()); }
                 case "respawn" -> { pl.respawn(); mc.gui.setScreen(null); }
                 case "wait" -> {}
                 case "reflex" -> { if (a.has("anti_drown")) Controller.antiDrown = a.get("anti_drown").getAsBoolean();
@@ -332,10 +335,11 @@ public final class Api {
         });
         res.addProperty("result", msg);
         // optionally block until the task finishes (or N ticks pass), then report what you now see
-        int waitTicks = a.has("wait") ? a.get("wait").getAsInt() : 0;
+        final int waitTicks = a.has("wait") ? a.get("wait").getAsInt()
+                : type.equals("say") && Talk.takesTime ? Talk.stillSpeakingTicks() + 1 : 0;   // (saying it takes that long)
         if (waitTicks > 0) {
             // counted in game ticks, not wall time: under `/tick rate 60` a 400-tick wait is 400 ticks, not 1200
-            boolean waitForTask = (!type.equals("wait") && !type.equals("hold")) || a.has("until_idle");
+            boolean waitForTask = (!type.equals("wait") && !type.equals("hold") && !type.equals("say")) || a.has("until_idle");
             // checked inside the game tick itself (Api.tickWaits), so the brain is woken on the very tick something
             // happens, at any game speed — not on a wall-clock poll that gets coarser the faster the game runs
             Wait w = onClient(() -> {
@@ -362,7 +366,7 @@ public final class Api {
 
     /** a request waiting for its action: resolved by the game tick (task done, N ticks passed, or an alarm) */
     static final class Wait {
-        final int untilTick; final boolean forTask; final float hp0; final int air0;
+        final int untilTick; final boolean forTask; final float hp0; final int air0; final long heard0 = Talk.heardSeq;
         volatile String woke; final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
         Wait(int u, boolean t, float hp, int air) { untilTick = u; forTask = t; hp0 = hp; air0 = air; }
     }
@@ -378,6 +382,7 @@ public final class Api {
             if (p != null && p.getHealth() < w.hp0) alarm = String.format("hurt (%.0f -> %.0f HP)", w.hp0, p.getHealth()) + hurtCause(p);
             else if (p != null && p.getAirSupply() < Math.min(w.air0, p.getMaxAirSupply()) - 60) alarm = "running out of air";
             else if (Pause.paused != null && !"idle".equals(Pause.pausedKind)) alarm = "PAUSED: " + Pause.paused;
+            else if (Talk.heardSeq > w.heard0) alarm = "a message: " + Talk.lastHeard;   // (someone spoke to me: I may want to answer)
             if (alarm != null) w.woke = alarm;
             if (alarm != null || HonestClient.worldTicks >= w.untilTick || (w.forTask && Controller.task == null)) w.latch.countDown();
         }

@@ -77,6 +77,7 @@ description: "Use when playing or developing Naked Eye (眼见为实), the naked
 - verify 里的 `arena()` 会把 agent 从 y225 带着缓降放下去：要先落地，再清掉药水效果。
 - 端口一律从 `tools/ports.py` 取（槽位 +100×N），不要在代码里写死 7070/25575；新工具也要这样。
 - 冻结和解冻的裁决由服务端的 `Clock` 统一做：客户端只发 Hold(on/off)，有人按住，世界就停。不要再从客户端直接用 RCON 发 `tick freeze/unfreeze`，那样会抢掉别的 Agent 的暂停。"等 N tick"要用 `HonestClient.worldTicks`，`ticks` 在冻结期间也会照常增加。
+- 多 Agent 测试的老坑：两个 Agent 同时等，先等完的那个一闲下来就按住世界，另一个剩下的 tick 就永远等不完。所以让必须先结束的那个等得短一些。要把某个名字移出 agents.txt，得先等它断开连接，否则它会被当成观战者，旁观者模式还会存进存档（现在服务端会把 Agent 改回生存模式，但测试里还是别这么做）。
 - 测多 Agent 时，不要在一个 Agent 的动作还没返回时，又用同一份测试脚本去等另一个 Agent，很容易把自己锁死。查别的 Agent 的位置，用 RCON 最省事。
 - 能从游戏给客户端的结构化数据里拿到的东西（伤害事件、实体状态），就别去匹配字幕或显示文字。伤因来自 `Hurt.java`（伤害事件包）。"看得见"一律用 `Perception.entities(…, true)` 的结果：`anyPointVisible` 只管有没有东西挡着，不管视野，单独用它就会泄露背后的东西。
 - ServerReplay 的玩家录制器原本只让 Flashback 格式暂停；对 ReplayMod 格式来说，暂停只是停时钟、不丢包，所以服务端 mod 放开了这个限制（`RecordingClock`）：冻结期间照录，但不计时。`replay_cut.py` 只给更早的旧录像用。

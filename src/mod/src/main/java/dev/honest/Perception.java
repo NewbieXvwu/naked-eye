@@ -159,6 +159,8 @@ public final class Perception {
         o.add("crosshair", crosshair(mc, pl));
         o.add("entities", entities(mc, pl, lvl, true));
         o.add("recently_lost_sight_of", Sightings.lost(mc, pl));
+        JsonArray on = Talk.online(mc);
+        if (on.size() > 1) o.add("players_online", on);   // (the Tab list: only worth showing when I'm not alone)
         o.add("blocks_in_view", blocksInView(pl));
         o.addProperty("known_blocks", MAP.size());
         return o;
@@ -174,6 +176,7 @@ public final class Perception {
         if (pl.getAirSupply() < pl.getMaxAirSupply())                 // bubbles only appear when used
             s.addProperty("air_bubbles", Math.max(0, (int) Math.ceil(pl.getAirSupply() / 30.0)));
         s.addProperty("xp_level", pl.experienceLevel);
+        if (pl.getTeam() instanceof net.minecraft.world.scores.PlayerTeam t) s.addProperty("team", t.getName());
         // F3 screen: position, facing, biome, light, day count
         JsonArray pos = new JsonArray();
         pos.add(round(pl.getX(), 2)); pos.add(round(pl.getY(), 2)); pos.add(round(pl.getZ(), 2));
@@ -282,11 +285,15 @@ public final class Perception {
             AABB bb = e.getBoundingBox();
             Vec3 center = bb.getCenter();
             double dist = center.distanceTo(eye);
+            // another player's name tag: the game draws it up to 64 m away, through walls and in the dark — unless
+            // they sneak (then only where you could see them anyway) or their team hides it from me
+            boolean tag = e instanceof net.minecraft.world.entity.player.Player op && nameTagShown(pl, op, dist);
+            boolean tagOnly = false;
             if (honest) {
                 if (dist > sight) continue;
-                if (e.isInvisible()) continue;
+                if (e.isInvisible() && !tag) continue;
                 if (!inFov(center.subtract(eye), fwd, right, up, tanH, tanV, bb)) continue;
-                if (!anyPointVisible(lvl, eye, bb)) continue;
+                if (!anyPointVisible(lvl, eye, bb)) { if (tag && !e.isDiscrete()) tagOnly = true; else continue; }
             }
             double size = Math.max(bb.getYsize(), Math.max(bb.getXsize(), bb.getZsize()));
             double px = Math.toDegrees(2 * Math.atan2(size / 2, Math.max(dist, 0.1))) / Math.toDegrees(vfov) * NOMINAL_SCREEN_PX;
@@ -297,7 +304,8 @@ public final class Perception {
             double L = Luma.perceived(Luma.raw(Luma.blockOf(packed), Luma.skyOf(packed), lvl.getSkyDarken()), Luma.slider());
             boolean noticed = px >= Luma.pxToNotice(L) || dist <= 1.5;
             boolean eyesOnly = false;
-            if (honest && !noticed) {
+            if (honest && !noticed && tag) tagOnly = true;   // (too dark or too small, but the name floats there)
+            else if (honest && !noticed) {
                 // emissive eye layers (spiders, endermen) glow at full brightness in the dark
                 if (hasGlowingEyes(mc, e) && px * 0.12 >= MIN_PX_TO_NOTICE) eyesOnly = true;
                 else continue;
@@ -306,6 +314,13 @@ public final class Perception {
             JsonObject j = new JsonObject();
             j.addProperty("id", e.getId());
             j.addProperty("type", entityName(e));
+            if (tag) {
+                j.addProperty("name", e.getName().getString());
+                if (e.getTeam() instanceof net.minecraft.world.scores.PlayerTeam t) {
+                    j.addProperty("team", t.getName());
+                    if (pl.getTeam() != null) j.addProperty("teammate", t.isAlliedTo(pl.getTeam()));
+                }
+            }
             Vec3 rel = center.subtract(eye);
             double bearing = Mth.wrapDegrees(Math.toDegrees(Math.atan2(-rel.x, rel.z)) - pl.getYRot());
             double elev = Math.toDegrees(Math.atan2(rel.y, Math.sqrt(rel.x * rel.x + rel.z * rel.z)));
@@ -320,7 +335,9 @@ public final class Perception {
             JsonArray ap = new JsonArray();
             ap.add(Math.round(est.x)); ap.add(Math.round(est.y - bb.getYsize() / 2)); ap.add(Math.round(est.z));
             j.add("approx_pos", ap);
-            if (eyesOnly) {
+            if (tagOnly) {
+                j.addProperty("detail", "only_name_tag_visible");   // (through a wall, or too dark to see them)
+            } else if (eyesOnly) {
                 j.addProperty("detail", "only_glowing_eyes_visible");
             } else if (!honest || px >= Luma.pxForDetail(L)) {
                 JsonObject look = renderStateAppearance(mc, e, rs);
@@ -357,6 +374,19 @@ public final class Perception {
         double zz = Math.max(z, 0.05);
         double xx = Math.abs(rel.dot(right)) - rad, yy = Math.abs(rel.dot(up)) - rad;
         return xx / zz <= tanH && yy / zz <= tanV;
+    }
+
+    /** vanilla's rule for drawing another player's name tag (LivingEntityRenderer.shouldShowName, 64 m) */
+    static boolean nameTagShown(LocalPlayer me, net.minecraft.world.entity.player.Player p, double dist) {
+        if (dist > 64 || p.isInvisibleTo(me) || p.isSpectator()) return false;
+        var them = p.getTeam(); var mine = me.getTeam();
+        if (them == null) return true;
+        return switch (them.getNameTagVisibility()) {
+            case ALWAYS -> true;
+            case NEVER -> false;
+            case HIDE_FOR_OTHER_TEAMS -> mine != null && them.isAlliedTo(mine);
+            case HIDE_FOR_OWN_TEAM -> mine == null || !them.isAlliedTo(mine);
+        };
     }
 
     static boolean anyPointVisible(ClientLevel lvl, Vec3 eye, AABB bb) {

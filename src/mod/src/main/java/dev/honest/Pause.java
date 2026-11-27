@@ -87,7 +87,8 @@ public final class Pause {
         }
         // idle: the last action has returned and nothing is moving -> freeze until the next decision (3 ticks of grace,
         // so a script chaining actions back to back doesn't flap the server)
-        if (allow && idle && mode.equals("freeze") && paused == null && !pl.isDeadOrDying() && actsInFlight.get() == 0
+        // (dead counts too: deciding on the death screen is thinking, and the others wait for it)
+        if (allow && idle && mode.equals("freeze") && paused == null && actsInFlight.get() == 0
                 && System.currentTimeMillis() - lastActEndMs > 100 && Controller.idleNow(pl)) {
             if (++idleTicks >= 3) pause("thinking (idle — the world waits for my next action)", "idle");
         } else idleTicks = 0;

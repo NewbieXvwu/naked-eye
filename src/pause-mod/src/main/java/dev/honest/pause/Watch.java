@@ -56,6 +56,7 @@ public final class Watch implements ModInitializer {
         net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry.serverboundPlay().register(Note.TYPE, Note.CODEC);
         net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.registerGlobalReceiver(Note.TYPE, (n, ctx) -> Note.onServer(ctx.player(), n.text()));
         Clock.register();
+        Rules.register();
 
         ServerPlayConnectionEvents.JOIN.register((h, sender, server) -> {
             ServerPlayer p = h.player;
@@ -78,6 +79,7 @@ public final class Watch implements ModInitializer {
         ServerTickEvents.END_SERVER_TICK.register(Watch::tick);
         ServerTickEvents.END_SERVER_TICK.register(RecordingClock::tick);
         ServerTickEvents.END_SERVER_TICK.register(Clock::tick);
+        ServerTickEvents.END_SERVER_TICK.register(Teams::tick);
         CommandRegistrationCallback.EVENT.register((d, ctx, env) -> d.register(Commands.literal("watch")
                 .executes(c -> watch(c.getSource().getPlayerOrException(), null))
                 .then(Commands.argument("agent", StringArgumentType.word())
@@ -121,7 +123,9 @@ public final class Watch implements ModInitializer {
     static void tick(MinecraftServer server) {
         if (server.getTickCount() % 20 == 0) loadAgents();
         for (ServerPlayer p : server.getPlayerList().getPlayers()) {
-            if (isAgent(p)) continue;
+            // an agent is never a spectator: if it was a watcher once (named in agents.txt only later, or taken off the
+            // list for a moment), its saved game mode would stay spectator for good
+            if (isAgent(p)) { if (p.gameMode() == GameType.SPECTATOR) p.setGameMode(GameType.SURVIVAL); continue; }
             if (p.gameMode() != GameType.SPECTATOR) p.setGameMode(GameType.SPECTATOR);
             UUID id = p.getUUID();
             ServerPlayer was = inside.get(id);

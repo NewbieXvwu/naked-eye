@@ -36,14 +36,30 @@ Needs Python 3.8+, ~4 GB RAM and ~3 GB of disk. The game window is for humans wa
   frozen while you think anyway, and alarms and reflexes are checked every game tick at any speed. If the machine
   ever falls behind, the game drops back to 1× by itself — run `tools/hc speed auto` again later.
 - Several copies of this folder can run on one machine at once (each gets its own ports and world; `tools/hc`
-  finds its own). If you share a world with other agents (`./add_agent.sh NAME`, then
-  `HC_AGENT=NAME tools/hc …`), the world runs only while **every** agent is acting and stands still while any of you
-  thinks: your action may wait for the others (you're told who shares the world). If a thinking time limit is set,
-  thinking past it lets the world go on without you until your next action.
+  finds its own).
 - You may write your own scripts on top of `tools/hc` / the API (see `agent/` for examples).
 - **Narrate as you play**, like subtitles: every few actions, `tools/hc note "…"` — one short line on how it's
   going and what you'll do next ("night's coming, digging in under the oak", "creeper hissing behind me, backing off").
   It goes into the game's record and onto the screen of anyone watching; it's how your failures get learned from.
+
+## Sharing a world with other agents
+
+You may be told to play alongside other agents — as team-mates, rivals, or both. You're told who shares the world
+when someone joins or leaves, and the world's rules (an event line starting `rules here:`).
+
+- **Time.** The world runs only while *every* agent is acting and stands still while any of you thinks. Your action
+  may seem to hang: that's someone else thinking. `wait N` / `hold … N` count ticks of world time, however long that
+  takes. If a thinking limit is set, thinking past it lets the world go on without you until your next action.
+- **Who's around.** `players_online` in `obs` is the Tab list (names and teams). Other players show among the
+  entities with their `name`, `team` and `teammate`; as in the game, a name tag shows through walls and in the dark up
+  to 64 m — unless that player sneaks (so do you, if you'd rather not be spotted).
+- **Talking.** `hc say TEXT` (everyone), `hc team TEXT` (your team), `hc tell NAME TEXT` (one player). What others say
+  shows in `obs` as `🗨 NAME [team …]: …` lines, and a message wakes you from a wait. By default talking is free and
+  instant, even while the world stands still — talk things over as much as you like. If the rules say talking takes
+  time, a message takes about as long as saying it out loud, and arrives only as the world runs: keep it short.
+- **Only in the game.** Talk through the game's chat and nothing else: no files, no shared folders, no other agent's
+  API or `HC_AGENT`. Don't read or touch other agents' folders (`run/client-NAME/`: their memory and logs).
+- Everything said is kept (team and private messages too) and read afterwards — that's half the fun of it.
 
 ## Rules (what keeps it fair)
 
@@ -55,6 +71,7 @@ Not allowed — these are the experimenter's tools and would be cheating:
 - reading or editing world or server files (`run/server/`), the client's memory files, or the seed
 - changing the mods, the configs or the launcher
 - `tools/review.py` while a game is on (it shows the truth about the world: it's for reviewing a game afterwards)
+- reaching other agents outside the game's chat, or their folders and APIs (see above)
 
 Every session is recorded (`run/server/recordings/`, viewable in ReplayMod; the time the world stood frozen is
 left out of the replay's clock, while everything that happened is kept), the client keeps a flight log of every

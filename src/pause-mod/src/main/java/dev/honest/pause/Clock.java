@@ -37,7 +37,6 @@ public final class Clock {
 
     static final class Holding { final long sinceMs = System.currentTimeMillis(); String why; boolean expired; }
     static final Map<UUID, Holding> HOLDS = new HashMap<>();
-    static int thinkLimitS = 0; static long limitStamp = -1;
 
     static void register() {
         net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry.serverboundPlay().register(Hold.TYPE, Hold.CODEC);
@@ -76,6 +75,7 @@ public final class Clock {
         for (String n : now) if (!lastAgents.contains(n) && lastAgents.size() > 0) what.add(n + " joined");
         for (String n : lastAgents) if (!now.contains(n)) what.add(n + " left");
         lastAgents = now;
+        Rules.sendAll(s);   // (newcomers need the rules too)
         agentsChanged(s, what.isEmpty() ? "" : String.join(", ", what) + ": ");
     }
     static void agentsChanged(MinecraftServer s, String what) {
@@ -96,7 +96,8 @@ public final class Clock {
     }
 
     static void tick(MinecraftServer server) {
-        if (server.getTickCount() % 20 == 0) loadLimit();
+        if (server.getTickCount() % 20 == 0 && Rules.load()) Rules.sendAll(server);
+        int thinkLimitS = Rules.thinkLimitS;
         watchAgents(server);
         if (thinkLimitS <= 0 || HOLDS.isEmpty()) return;
         long now = System.currentTimeMillis(); boolean changed = false;
@@ -116,19 +117,6 @@ public final class Clock {
     static void say(ServerPlayer p, String text) {
         if (net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.canSend(p, Say.TYPE))
             net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(p, new Say(text));
-    }
-
-    static void loadLimit() {
-        try {
-            Path f = Path.of("config", "naked-eye", "clock.properties");
-            if (!Files.exists(f)) { thinkLimitS = 0; return; }
-            long stamp = Files.getLastModifiedTime(f).toMillis();
-            if (stamp == limitStamp) return;
-            limitStamp = stamp;
-            Properties pr = new Properties();
-            try (var in = Files.newInputStream(f)) { pr.load(in); }
-            thinkLimitS = Integer.parseInt(pr.getProperty("think_limit_seconds", "0").strip());
-        } catch (Exception ignored) {}
     }
 
     // ------------------------------------------------------------------ client side (this mod is on the client too)
