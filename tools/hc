@@ -209,10 +209,11 @@ def main(a):
         print("->", r.get("result")); fmt(r["observation"])
     elif c == "eat":   # hc eat — eat the best food in the hotbar (hold right-click ~1.7 s), then go back to the held slot
         o = get("/observe"); inv = o["self"]["inventory"]; cur = o["self"].get("selected_slot", 0)
-        pref = ["golden_carrot", "cooked_beef", "cooked_porkchop", "cooked_mutton", "cooked_salmon", "cooked_cod", "cooked_chicken", "bread", "baked_potato", "cooked_rabbit", "apple", "carrot", "salmon", "cod", "tropical_fish", "dried_kelp", "sweet_berries", "melon_slice", "rotten_flesh"]
+        pref = ["golden_carrot", "cooked_beef", "cooked_porkchop", "cooked_mutton", "cooked_salmon", "cooked_cod", "cooked_chicken", "bread", "baked_potato", "cooked_rabbit", "apple", "carrot", "salmon", "cod", "tropical_fish", "dried_kelp", "sweet_berries", "melon_slice", "porkchop", "beef", "chicken", "mutton", "rabbit", "rotten_flesh"]
         food = sorted([i for i in inv if i["item"] in pref and i["slot"] < 9], key=lambda i: pref.index(i["item"]))
         if not food: print("no food in the hotbar"); return
-        act({"type": "hotbar", "slot": food[0]["slot"]}, 1); act({"type": "hold", "keys": ["use"], "ticks": 36}, 38)
+        act({"type": "hotbar", "slot": food[0]["slot"]}, 1)
+        r = act({"type": "eat"}, 400); print(r.get("result") if isinstance(r, dict) else r)
         act({"type": "hotbar", "slot": cur}, 1); print("ate", food[0]["item"])
     elif c == "track": act({"type": "track", "id": int(x[0]) if x else 0}, 2)   # lock the view on a nearby entity (0 = off)
     elif c == "cave": print(get("/places")["text"])

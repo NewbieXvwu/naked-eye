@@ -546,6 +546,26 @@ public final class Controller {
     }
 
     /** Right-click whatever the crosshair is on (place block / open / use item). */
+    /**
+     * Eat (or drink, or raise a shield): right-click with the item in the hand and keep the key down until the bite
+     * lands. Lesson from the sixth life: sending "hold use" on its own never fed me — the click that starts the eat
+     * and the key state have to line up inside one tick, so the task drives both and watches the stack.
+     */
+    public static final class Eat implements Task {
+        int t = 0; String item = null; int was = 0;
+        public String describe() { return "eat " + (item == null ? "?" : item); }
+        public String tick(Minecraft mc, LocalPlayer pl) {
+            var st = pl.getMainHandItem();
+            if (item == null) { item = Perception.itemName(st); was = st.getCount(); }
+            if (++t > 80) { holds.remove("use"); return "no bite (still " + st.getCount() + ")"; }
+            if (!Perception.itemName(st).equals(item) || st.getCount() < was) { holds.remove("use"); return "eaten"; }
+            holds.put("use", -1);   // a person keeps the button down while chewing
+            if (!pl.isUsingItem()) mc.gameMode.useItem(pl, net.minecraft.world.InteractionHand.MAIN_HAND);
+            return null;
+        }
+        public void cancel(Minecraft mc) { holds.remove("use"); }
+    }
+
     public static final class UseAt implements Task {
         final Vec3 aim; int t = 0;
         public UseAt(Vec3 aim) { this.aim = aim; }

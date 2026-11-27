@@ -235,6 +235,7 @@ public final class Api {
                     Controller.lookAt(pl, e.getBoundingBox().getCenter());
                 }
                 case "look_at" -> Controller.lookAt(pl, vec(a));
+                case "eat" -> Controller.start(mc, new Controller.Eat());
                 case "hold" -> { int t = a.has("ticks") ? a.get("ticks").getAsInt() : 20;
                     for (JsonElement k : a.getAsJsonArray("keys")) Controller.hold(k.getAsString(), t); }
                 case "release" -> { if (a.has("keys")) for (JsonElement k : a.getAsJsonArray("keys")) Controller.release(k.getAsString()); else Controller.releaseAll(); }
