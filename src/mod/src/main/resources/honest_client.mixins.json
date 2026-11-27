@@ -6,7 +6,7 @@
     "MouseHandlerMixin",
     "GameRendererMixin",
     "TickRateMixin", "LoadTrackerMixin",
-    "FramerateMixin", "SpectatorInputMixin", "SpectatorKeysMixin", "WindowCloseMixin"
+    "FramerateMixin", "HeadlessTexturesMixin", "SpectatorInputMixin", "SpectatorKeysMixin", "WindowCloseMixin"
   ],
   "injectors": {
     "defaultRequire": 1

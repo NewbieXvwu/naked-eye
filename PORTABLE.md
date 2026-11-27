@@ -34,7 +34,7 @@ tools/hc obs
   - 想一启动就显示窗口：`HONEST_SHOW=1 ./start.sh`。
 - 环境变量：
   - `HONEST_WINDOW=1`：Linux 桌面环境下也开窗口（默认：有显示器就开，没有就完全无头）；
-  - `HONEST_MUTE=1`：静音（Linux 默认静音）；
+  - `HONEST_MUTE=0`：打开 Agent 客户端的声音（默认静音，字幕照常工作）；
   - `HONEST_XMX=3G`：调整客户端内存上限；
   - `HONEST_BUNDLED_MESA=1`：强制使用包里自带的 Mesa。
 - ⚠️ 离线包里有 Mojang 的游戏文件，只能自己用（包括放进你自己的沙箱），不要公开发布。

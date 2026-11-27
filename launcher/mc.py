@@ -272,7 +272,9 @@ def client():
            "-Dhonest.debug=" + ("false" if os.environ.get("HONEST_DEBUG") == "0" else "true")] + os.environ.get("HONEST_JAVA_OPTS", "").split() + jvm
     game = ["--username", name, "--version", MC, "--gameDir", gd, "--assetsDir", os.path.join(CACHE, "mc", "assets"),
             "--assetIndex", v["assetIndex"]["id"], "--uuid", str(uuid.uuid3(uuid.NAMESPACE_DNS, "Agent")), "--accessToken", "0",
-            "--versionType", "release", "--quickPlayMultiplayer", os.environ.get("HONEST_SERVER", "127.0.0.1:25565"), "--width", "1280", "--height", "720"]
+            "--versionType", "release", "--quickPlayMultiplayer", os.environ.get("HONEST_SERVER", "127.0.0.1:25565"), "--width", "128" if no_screen(osn) else "1280", "--height", "72" if no_screen(osn) else "720"]
+    # (no screen: nothing is drawn, but every frame still copies the picture to the window — on a software renderer
+    #  that copy was ~40% of the client's CPU at 1280x720. Same 16:9, so the field of view the eyes use is unchanged)
     env = dict(os.environ)
     if no_screen(osn):
         # no screen: SDL's offscreen driver + Mesa's surfaceless EGL + llvmpipe software GL; no sound device
@@ -283,7 +285,9 @@ def client():
             env["LD_LIBRARY_PATH"] = os.path.join(mesa, "lib") + os.pathsep + env.get("LD_LIBRARY_PATH", "")
             env["__EGL_VENDOR_LIBRARY_FILENAMES"] = os.path.join(mesa, "50_mesa.json")
             env["LIBGL_DRIVERS_PATH"] = os.path.join(mesa, "lib", "dri")
-    if os.environ.get("HONEST_MUTE", "1" if osn == "linux" else "0") == "1": env["ALSOFT_DRIVERS"] = "null"
+    # muted by default (the window is hidden; watchers hear the game in their own client). Subtitles still work:
+    # the sound engine runs, it just has no output device. HONEST_MUTE=0 to hear it.
+    if os.environ.get("HONEST_MUTE", "1") == "1": env["ALSOFT_DRIVERS"] = "null"
     os.chdir(gd)
     j = java_bin()
     os.execve(j, [j] + jvm + [prof["mainClass"]] + game, env)
