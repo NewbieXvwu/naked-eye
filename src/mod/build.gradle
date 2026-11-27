@@ -1,0 +1,33 @@
+plugins {
+    id 'net.fabricmc.fabric-loom' version "${loom_version}"
+}
+
+version = project.mod_version
+group = 'dev.honest'
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+    // Honest fork of Baritone (pathing only through the agent's memory); optional at runtime
+    if (file("libs/baritone-honest.jar").exists()) {
+        compileOnly files("libs/baritone-honest.jar")
+    }
+}
+
+java { sourceCompatibility = JavaVersion.VERSION_25; targetCompatibility = JavaVersion.VERSION_25 }
+tasks.withType(JavaCompile).configureEach { it.options.release = 25 }
+
+processResources {
+    inputs.property "version", project.version
+    filesMatching("fabric.mod.json") { expand "version": project.version }
+}
+
+loom {
+    runs {
+        client {
+            programArgs "--username", "Agent", "--quickPlayMultiplayer", "127.0.0.1:25565", "--width", "1280", "--height", "720"
+            vmArgs "-Xmx2G", "-Dhonest.headless=" + (System.getenv("HONEST_HEADLESS") ?: "false")
+        }
+    }
+}

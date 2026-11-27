@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "honest_pause",
+  "version": "${version}",
+  "name": "Naked Eye server (pause + watch)",
+  "description": "Makes /tick freeze a real pause: players freeze too (no suffocating, starving or walking while frozen). Install on the server and the client.",
+  "environment": "*",
+  "depends": { "fabricloader": ">=0.16", "minecraft": "26.3" },
+  "entrypoints": { "main": [ "dev.honest.pause.Watch" ] },
+  "mixins": [ "honest_pause.mixins.json" ]
+}

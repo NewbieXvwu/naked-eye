@@ -1,0 +1,14 @@
+# downloaded game files, Java, natives (./setup.sh)
+.cache/
+# worlds, recordings, agent memory, logs (./start.sh)
+run/
+# built packages (tools/make_packages.sh) — the offline one contains Mojang's files: never commit or publish it
+dist/
+runtime/
+.offline
+# builds
+src/*/build/
+src/*/.gradle/
+src/*/run/
+__pycache__/
+*.log

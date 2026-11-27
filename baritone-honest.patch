@@ -1,0 +1,404 @@
+From af06b25569d55dae0db932033a7ce45bb3687450 Mon Sep 17 00:00:00 2001
+From: honest <a@b>
+Date: Thu, 26 Nov 2026 02:38:23 +0000
+Subject: [PATCH 1/3] honest fork: world lookups from agent memory, turn rate
+ cap
+
+---
+ gradle.properties                             |  9 +++-
+ .../java/baritone/api/utils/HonestWorld.java  | 45 +++++++++++++++++++
+ .../java/baritone/behavior/LookBehavior.java  |  7 +--
+ .../pathing/movement/MovementHelper.java      |  2 +-
+ .../movement/movements/MovementDescend.java   |  2 +-
+ .../movement/movements/MovementDiagonal.java  |  2 +-
+ .../movement/movements/MovementFall.java      |  7 +--
+ .../movement/movements/MovementParkour.java   |  2 +-
+ .../movement/movements/MovementTraverse.java  |  2 +-
+ .../baritone/pathing/path/PathExecutor.java   |  6 +--
+ .../baritone/pathing/path/SprintJump.java     |  3 +-
+ .../baritone/utils/BlockStateInterface.java   |  6 +++
+ 12 files changed, 76 insertions(+), 17 deletions(-)
+ create mode 100644 src/api/java/baritone/api/utils/HonestWorld.java
+
+diff --git a/gradle.properties b/gradle.properties
+index 8f213f4..1fd3714 100644
+--- a/gradle.properties
++++ b/gradle.properties
+@@ -1,6 +1,6 @@
+-org.gradle.jvmargs=-Xmx4G
++org.gradle.jvmargs=-Xmx2G
+ 
+-available_loaders=fabric,forge,neoforge,tweaker
++available_loaders=fabric
+ 
+ mod_version=1.20.0
+ maven_group=baritone
+@@ -20,3 +20,8 @@ fabric_version=0.19.5
+ // while mod loaders usually ship their own version
+ mixin_version=0.8.7
+ asm_version=9.7
++org.gradle.java.installations.paths=/home/claude/mc26/jdk25
++org.gradle.java.installations.auto-download=false
++org.gradle.workers.max=2
++systemProp.org.gradle.internal.repository.max.retries=12
++systemProp.org.gradle.internal.repository.initial.backoff=3000
+diff --git a/src/api/java/baritone/api/utils/HonestWorld.java b/src/api/java/baritone/api/utils/HonestWorld.java
+new file mode 100644
+index 0000000..eeed9e5
+--- /dev/null
++++ b/src/api/java/baritone/api/utils/HonestWorld.java
+@@ -0,0 +1,45 @@
++/*
++ * This file is part of Baritone (honest fork).
++ *
++ * Baritone is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU Lesser General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ */
++
++package baritone.api.utils;
++
++import net.minecraft.util.Mth;
++import net.minecraft.world.level.block.state.BlockState;
++
++/**
++ * Honest-perception hook. When {@link #lookup} is set, every block Baritone plans or executes with
++ * comes from the agent's memory of what it has SEEN, not from the client's chunk data.
++ * Unknown blocks are reported as {@code null}, which Baritone treats as air: you may pass through
++ * space you haven't seen, but you can never stand on ground you haven't seen.
++ */
++public final class HonestWorld {
++    private HonestWorld() {}
++
++    public interface Lookup {
++        /** @return the remembered state, or null if never seen */
++        BlockState get(int x, int y, int z);
++    }
++
++    public static volatile Lookup lookup;
++
++    /** Max camera turn per tick in degrees; 0 = unlimited (vanilla Baritone behaviour). */
++    public static volatile float maxTurnPerTick = 0f;
++
++    public static float clampYaw(float from, float to) {
++        float m = maxTurnPerTick;
++        if (m <= 0) return to;
++        return from + Mth.clamp(Mth.wrapDegrees(to - from), -m, m);
++    }
++
++    public static float clampPitch(float from, float to) {
++        float m = maxTurnPerTick;
++        if (m <= 0) return to;
++        return Mth.clamp(from + Mth.clamp(to - from, -m, m), -90f, 90f);
++    }
++}
+diff --git a/src/main/java/baritone/behavior/LookBehavior.java b/src/main/java/baritone/behavior/LookBehavior.java
+index f1f0013..c817cdc 100644
+--- a/src/main/java/baritone/behavior/LookBehavior.java
++++ b/src/main/java/baritone/behavior/LookBehavior.java
+@@ -17,6 +17,7 @@
+ 
+ package baritone.behavior;
+ 
++import baritone.api.utils.HonestWorld;
+ import baritone.Baritone;
+ import baritone.api.Settings;
+ import baritone.api.behavior.ILookBehavior;
+@@ -96,8 +97,8 @@ public final class LookBehavior extends Behavior implements ILookBehavior {
+ 
+                 this.prevRotation = new Rotation(ctx.player().getYRot(), ctx.player().getXRot());
+                 final Rotation actual = this.processor.peekRotation(this.target.rotation);
+-                ctx.player().setYRot(actual.getYaw());
+-                ctx.player().setXRot(actual.getPitch());
++                ctx.player().setYRot(HonestWorld.clampYaw(this.prevRotation.getYaw(), actual.getYaw()));
++                ctx.player().setXRot(HonestWorld.clampPitch(this.prevRotation.getPitch(), actual.getPitch()));
+                 break;
+             }
+             case POST: {
+@@ -154,7 +155,7 @@ public final class LookBehavior extends Behavior implements ILookBehavior {
+     public void pig() {
+         if (this.target != null) {
+             final Rotation actual = this.processor.peekRotation(this.target.rotation);
+-            ctx.player().setYRot(actual.getYaw());
++            ctx.player().setYRot(HonestWorld.clampYaw(ctx.player().getYRot(), actual.getYaw()));
+         }
+     }
+ 
+diff --git a/src/main/java/baritone/pathing/movement/MovementHelper.java b/src/main/java/baritone/pathing/movement/MovementHelper.java
+index 73cf082..b1bd908 100644
+--- a/src/main/java/baritone/pathing/movement/MovementHelper.java
++++ b/src/main/java/baritone/pathing/movement/MovementHelper.java
+@@ -288,7 +288,7 @@ public interface MovementHelper extends ActionCosts, Helper {
+     }
+ 
+     static boolean fullyPassable(IPlayerContext ctx, BlockPos pos) {
+-        BlockState state = ctx.world().getBlockState(pos);
++        BlockState state = BlockStateInterface.get(ctx, pos);
+         Ternary fullyPassable = fullyPassableBlockState(state);
+         if (fullyPassable == YES) {
+             return true;
+diff --git a/src/main/java/baritone/pathing/movement/movements/MovementDescend.java b/src/main/java/baritone/pathing/movement/movements/MovementDescend.java
+index 2f5ec1e..790aa12 100644
+--- a/src/main/java/baritone/pathing/movement/movements/MovementDescend.java
++++ b/src/main/java/baritone/pathing/movement/movements/MovementDescend.java
+@@ -262,7 +262,7 @@ public class MovementDescend extends Movement {
+         double z = ctx.player().position().z - (src.getZ() + 0.5);
+         double fromStart = Math.sqrt(x * x + z * z);
+ 
+-        state.setInput(Input.SNEAK, Baritone.settings().allowWalkOnMagmaBlocks.value && ctx.world().getBlockState(ctx.player().blockPosition().below()).is(Blocks.MAGMA_BLOCK) && !MovementHelper.hasFrostWalker(ctx));
++        state.setInput(Input.SNEAK, Baritone.settings().allowWalkOnMagmaBlocks.value && BlockStateInterface.get(ctx, ctx.player().blockPosition().below()).is(Blocks.MAGMA_BLOCK) && !MovementHelper.hasFrostWalker(ctx));
+ 
+         if (!playerFeet.equals(dest) || ab > 0.25) {
+             if (numTicks++ < 20 && fromStart < 1.25) {
+diff --git a/src/main/java/baritone/pathing/movement/movements/MovementDiagonal.java b/src/main/java/baritone/pathing/movement/movements/MovementDiagonal.java
+index 83cb95f..3eefb99 100644
+--- a/src/main/java/baritone/pathing/movement/movements/MovementDiagonal.java
++++ b/src/main/java/baritone/pathing/movement/movements/MovementDiagonal.java
+@@ -308,7 +308,7 @@ public class MovementDiagonal extends Movement {
+         if (sprint()) {
+             state.setInput(Input.SPRINT, true);
+         }
+-        state.setInput(Input.SNEAK, Baritone.settings().allowWalkOnMagmaBlocks.value && MovementHelper.steppingOnBlocks(ctx).stream().anyMatch(block -> ctx.world().getBlockState(block).is(Blocks.MAGMA_BLOCK)) && !MovementHelper.hasFrostWalker(ctx));
++        state.setInput(Input.SNEAK, Baritone.settings().allowWalkOnMagmaBlocks.value && MovementHelper.steppingOnBlocks(ctx).stream().anyMatch(block -> BlockStateInterface.get(ctx, block).is(Blocks.MAGMA_BLOCK)) && !MovementHelper.hasFrostWalker(ctx));
+         MovementHelper.moveTowards(ctx, state, dest);
+         return state;
+     }
+diff --git a/src/main/java/baritone/pathing/movement/movements/MovementFall.java b/src/main/java/baritone/pathing/movement/movements/MovementFall.java
+index 2f505c5..e593ae7 100644
+--- a/src/main/java/baritone/pathing/movement/movements/MovementFall.java
++++ b/src/main/java/baritone/pathing/movement/movements/MovementFall.java
+@@ -17,6 +17,7 @@
+ 
+ package baritone.pathing.movement.movements;
+ 
++import baritone.utils.BlockStateInterface;
+ import baritone.api.IBaritone;
+ import baritone.api.pathing.movement.MovementStatus;
+ import baritone.api.utils.BetterBlockPos;
+@@ -93,10 +94,10 @@ public class MovementFall extends Movement {
+         BlockPos playerFeet = ctx.playerFeet();
+         Rotation toDest = RotationUtils.calcRotationFromVec3d(ctx.playerHead(), VecUtils.getBlockPosCenter(dest), ctx.playerRotations());
+         Rotation targetRotation = null;
+-        BlockState destState = ctx.world().getBlockState(dest);
++        BlockState destState = BlockStateInterface.get(ctx, dest);
+         Block destBlock = destState.getBlock();
+ 
+-        if (ctx.world().getBlockState(dest.below()).is(Blocks.MAGMA_BLOCK)  && !MovementHelper.hasFrostWalker(ctx) && MovementHelper.steppingOnBlocks(ctx).stream().allMatch(block -> MovementHelper.canWalkThrough(ctx, block))) {
++        if (BlockStateInterface.get(ctx, dest.below()).is(Blocks.MAGMA_BLOCK)  && !MovementHelper.hasFrostWalker(ctx) && MovementHelper.steppingOnBlocks(ctx).stream().allMatch(block -> MovementHelper.canWalkThrough(ctx, block))) {
+             state.setInput(Input.SNEAK, true);
+         }
+ 
+@@ -171,7 +172,7 @@ public class MovementFall extends Movement {
+ 
+     private Direction avoid() {
+         for (int i = 0; i < 15; i++) {
+-            BlockState state = ctx.world().getBlockState(ctx.playerFeet().below(i));
++            BlockState state = BlockStateInterface.get(ctx, ctx.playerFeet().below(i));
+             if (state.getBlock() == Blocks.LADDER) {
+                 return state.getValue(LadderBlock.FACING);
+             }
+diff --git a/src/main/java/baritone/pathing/movement/movements/MovementParkour.java b/src/main/java/baritone/pathing/movement/movements/MovementParkour.java
+index 48fd109..1581403 100644
+--- a/src/main/java/baritone/pathing/movement/movements/MovementParkour.java
++++ b/src/main/java/baritone/pathing/movement/movements/MovementParkour.java
+@@ -265,7 +265,7 @@ public class MovementParkour extends Movement {
+         if (dist >= 4 || ascend) {
+             state.setInput(Input.SPRINT, true);
+         }
+-        if (Baritone.settings().allowWalkOnMagmaBlocks.value && ctx.world().getBlockState(ctx.playerFeet().below()).is(Blocks.MAGMA_BLOCK)) {
++        if (Baritone.settings().allowWalkOnMagmaBlocks.value && BlockStateInterface.get(ctx, ctx.playerFeet().below()).is(Blocks.MAGMA_BLOCK)) {
+             state.setInput(Input.SNEAK, true);
+         }
+ 
+diff --git a/src/main/java/baritone/pathing/movement/movements/MovementTraverse.java b/src/main/java/baritone/pathing/movement/movements/MovementTraverse.java
+index b9270b7..08ed870 100644
+--- a/src/main/java/baritone/pathing/movement/movements/MovementTraverse.java
++++ b/src/main/java/baritone/pathing/movement/movements/MovementTraverse.java
+@@ -221,7 +221,7 @@ public class MovementTraverse extends Movement {
+         boolean ladder = MovementHelper.isClimbable(fd);
+ 
+         //sneak may have been set to true in the PREPPING state while mining an adjacent block, but we still want it to be true if the player is about to go on magma
+-        state.setInput(Input.SNEAK, Baritone.settings().allowWalkOnMagmaBlocks.value && MovementHelper.steppingOnBlocks(ctx).stream().anyMatch(block -> ctx.world().getBlockState(block).is(Blocks.MAGMA_BLOCK)) && !MovementHelper.hasFrostWalker(ctx));
++        state.setInput(Input.SNEAK, Baritone.settings().allowWalkOnMagmaBlocks.value && MovementHelper.steppingOnBlocks(ctx).stream().anyMatch(block -> BlockStateInterface.get(ctx, block).is(Blocks.MAGMA_BLOCK)) && !MovementHelper.hasFrostWalker(ctx));
+ 
+         if (!MovementHelper.openDoors(ctx, state, src, dest)) {
+             return state;
+diff --git a/src/main/java/baritone/pathing/path/PathExecutor.java b/src/main/java/baritone/pathing/path/PathExecutor.java
+index d9d7094..0af47c1 100644
+--- a/src/main/java/baritone/pathing/path/PathExecutor.java
++++ b/src/main/java/baritone/pathing/path/PathExecutor.java
+@@ -568,7 +568,7 @@ public class PathExecutor implements IPathExecutor, Helper {
+ 
+     private boolean underHeadBonkCeiling(BlockPos dir, BetterBlockPos feet) {
+         BlockPos ceiling = feet.above(2);
+-        if (MovementHelper.fullyPassable(ctx, ceiling) || !MovementHelper.isBlockNormalCube(ctx.world().getBlockState(ceiling))) {
++        if (MovementHelper.fullyPassable(ctx, ceiling) || !MovementHelper.isBlockNormalCube(BlockStateInterface.get(ctx, ceiling))) {
+             return false; // not under a ceiling yet, or the thing overhead is something like a trapdoor that we can't reliably bonk against
+         }
+         // diagonals can enter through either face, so clear each axis separately
+@@ -691,10 +691,10 @@ public class PathExecutor implements IPathExecutor, Helper {
+                 }
+             }
+         }
+-        if (MovementHelper.avoidWalkingInto(ctx.world().getBlockState(current.getSrc().above(3)))) {
++        if (MovementHelper.avoidWalkingInto(BlockStateInterface.get(ctx, current.getSrc().above(3)))) {
+             return false;
+         }
+-        return !MovementHelper.avoidWalkingInto(ctx.world().getBlockState(next.getDest().above(2))); // codacy smh my head
++        return !MovementHelper.avoidWalkingInto(BlockStateInterface.get(ctx, next.getDest().above(2))); // codacy smh my head
+     }
+ 
+     private static boolean canSprintFromDescendInto(IPlayerContext ctx, IMovement current, IMovement next) {
+diff --git a/src/main/java/baritone/pathing/path/SprintJump.java b/src/main/java/baritone/pathing/path/SprintJump.java
+index 2f2a4da..1b0539f 100644
+--- a/src/main/java/baritone/pathing/path/SprintJump.java
++++ b/src/main/java/baritone/pathing/path/SprintJump.java
+@@ -17,6 +17,7 @@
+ 
+ package baritone.pathing.path;
+ 
++import baritone.utils.BlockStateInterface;
+ import baritone.Baritone;
+ import baritone.api.pathing.calc.IPath;
+ import baritone.api.utils.BetterBlockPos;
+@@ -123,7 +124,7 @@ final class SprintJump {
+     }
+ 
+     private static boolean solidFloor(IPlayerContext ctx, BlockPos pos) {
+-        BlockState state = ctx.world().getBlockState(pos);
++        BlockState state = BlockStateInterface.get(ctx, pos);
+         // ice/slime change friction, soul sand/honey/farmland aren't full height, and hopping on magma without sneaking hurts
+         return state.getBlock().getFriction() == 0.6F && state.getBlock().getSpeedFactor() == 1.0F && state.getBlock().getJumpFactor() == 1.0F
+                 && !state.is(Blocks.MAGMA_BLOCK) && state.isCollisionShapeFullBlock(ctx.world(), pos);
+diff --git a/src/main/java/baritone/utils/BlockStateInterface.java b/src/main/java/baritone/utils/BlockStateInterface.java
+index 2235f8c..4d6fe2f 100644
+--- a/src/main/java/baritone/utils/BlockStateInterface.java
++++ b/src/main/java/baritone/utils/BlockStateInterface.java
+@@ -17,6 +17,7 @@
+ 
+ package baritone.utils;
+ 
++import baritone.api.utils.HonestWorld;
+ import baritone.Baritone;
+ import baritone.api.utils.IPlayerContext;
+ import baritone.cache.CachedRegion;
+@@ -176,6 +177,11 @@ public class BlockStateInterface {
+ 
+     // y is already shifted so 0 is bedrock, and already known to be in range
+     protected BlockState getUncached(int x, int y, int z) {
++        HonestWorld.Lookup honest = HonestWorld.lookup;
++        if (honest != null) { // honest fork: only what the agent has seen
++            BlockState seen = honest.get(x, y + minY, z);
++            return seen == null ? AIR : seen;
++        }
+         if (useTheRealWorld) {
+             LevelChunk cached = prev;
+             // there's great cache locality in block state lookups
+-- 
+2.43.0
+
+
+From 84ebb2616d56f686edc5771be44ab395c9dbbbf0 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 26 Nov 2026 06:48:42 +0000
+Subject: [PATCH 2/3] Honest fork: prefer the cheapest adequate tool
+ (preferCheapestAdequateTool)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_019aCDrJGFmggiroK1eQioyV
+---
+ src/api/java/baritone/api/Settings.java   |  6 ++++++
+ src/main/java/baritone/utils/ToolSet.java | 25 +++++++++++++++++++++++
+ 2 files changed, 31 insertions(+)
+
+diff --git a/src/api/java/baritone/api/Settings.java b/src/api/java/baritone/api/Settings.java
+index c57d478..ceaa17f 100644
+--- a/src/api/java/baritone/api/Settings.java
++++ b/src/api/java/baritone/api/Settings.java
+@@ -1451,6 +1451,12 @@ public final class Settings {
+      */
+     public final Setting<Boolean> useSwordToMine = new Setting<>(true);
+ 
++    /**
++     * Honest fork: among hotbar tools that actually speed up mining this block (and get its drops),
++     * pick the one made of the cheapest material, not the fastest. Saves the iron pickaxe for ore.
++     */
++    public final Setting<Boolean> preferCheapestAdequateTool = new Setting<>(false);
++
+     /**
+      * Desktop notifications
+      */
+diff --git a/src/main/java/baritone/utils/ToolSet.java b/src/main/java/baritone/utils/ToolSet.java
+index 420b5f6..4e1dcd6 100644
+--- a/src/main/java/baritone/utils/ToolSet.java
++++ b/src/main/java/baritone/utils/ToolSet.java
+@@ -144,6 +144,11 @@ public class ToolSet {
+             return player.getInventory().getSelectedSlot();
+         }
+ 
++        if (Baritone.settings().preferCheapestAdequateTool.value) {
++            int cheap = cheapestAdequateSlot(b.defaultBlockState());
++            if (cheap >= 0) return cheap;
++        }
++
+         int best = 0;
+         double highestSpeed = Double.NEGATIVE_INFINITY;
+         int lowestCost = Integer.MIN_VALUE;
+@@ -179,6 +184,26 @@ public class ToolSet {
+         return best;
+     }
+ 
++    /** Honest fork: cheapest-material hotbar tool that is effective on (and harvests) this block; -1 if none. */
++    private int cheapestAdequateSlot(BlockState state) {
++        int best = -1, bestCost = Integer.MAX_VALUE;
++        double bestSpeed = -1;
++        for (int i = 0; i < 9; i++) {
++            ItemStack st = player.getInventory().getItem(i);
++            if (st.isEmpty() || st.getDestroySpeed(state) <= 1f) continue;
++            if (state.requiresCorrectToolForDrops() && !st.isCorrectToolForDrops(state)) continue;
++            if (Baritone.settings().itemSaver.value && st.getMaxDamage() > 1
++                    && st.getDamageValue() + Baritone.settings().itemSaverThreshold.value >= st.getMaxDamage()) continue;
++            // NB: getMaterialCost() tests the *tool* against repair-material tags (cobblestone, iron_ingot...),
++            // which a pickaxe never matches, so it is -1 for everything. Max durability ranks tiers correctly
++            // (wood 59 < stone 131 < iron 250 < diamond 1561 < netherite 2031; gold 32 is cheap anyway).
++            int cost = st.getMaxDamage() > 0 ? st.getMaxDamage() : Integer.MAX_VALUE - 1;
++            double sp = calculateSpeedVsBlock(st, state);
++            if (cost < bestCost || (cost == bestCost && sp > bestSpeed)) { best = i; bestCost = cost; bestSpeed = sp; }
++        }
++        return best;
++    }
++
+     /**
+      * Calculate how effectively a block can be destroyed
+      *
+-- 
+2.43.0
+
+
+From d95abc7cf70419ed0d6582d285558ce57fe9eccd Mon Sep 17 00:00:00 2001
+From: claude <noreply@anthropic.com>
+Date: Thu, 26 Nov 2026 14:44:59 +0000
+Subject: [PATCH 3/3] Honest fork: never pick the sword as a digging tool
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_019aCDrJGFmggiroK1eQioyV
+---
+ src/main/java/baritone/utils/ToolSet.java | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/main/java/baritone/utils/ToolSet.java b/src/main/java/baritone/utils/ToolSet.java
+index 4e1dcd6..a3dab47 100644
+--- a/src/main/java/baritone/utils/ToolSet.java
++++ b/src/main/java/baritone/utils/ToolSet.java
+@@ -191,6 +191,7 @@ public class ToolSet {
+         for (int i = 0; i < 9; i++) {
+             ItemStack st = player.getInventory().getItem(i);
+             if (st.isEmpty() || st.getDestroySpeed(state) <= 1f) continue;
++            if (!Baritone.settings().useSwordToMine.value && st.is(ItemTags.SWORDS)) continue; // the sword is for fighting
+             if (state.requiresCorrectToolForDrops() && !st.isCorrectToolForDrops(state)) continue;
+             if (Baritone.settings().itemSaver.value && st.getMaxDamage() > 1
+                     && st.getDamageValue() + Baritone.settings().itemSaverThreshold.value >= st.getMaxDamage()) continue;
+-- 
+2.43.0
+

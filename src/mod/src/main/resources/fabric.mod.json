@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "honest_client",
+  "version": "${version}",
+  "name": "Naked Eye",
+  "description": "An agent-facing Minecraft client that only reveals what a human player could perceive.",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "dev.honest.HonestClient"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.16",
+    "minecraft": "26.3",
+    "fabric-api": "*"
+  },
+  "mixins": [
+    "honest_client.mixins.json"
+  ],
+  "suggests": {
+    "baritone": "*"
+  }
+}

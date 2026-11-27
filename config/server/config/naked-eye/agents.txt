@@ -1,0 +1,2 @@
+# One agent per line. Everyone else who joins is a watcher (spectator, possessing an agent).
+Agent

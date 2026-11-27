@@ -1,0 +1,8 @@
+{
+  "required": true,
+  "package": "dev.honest.pause.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [ "TickRateManagerMixin" ],
+  "server": [ "ServerGamePacketListenerImplMixin", "WatcherActionsMixin" ],
+  "injectors": { "defaultRequire": 1 }
+}

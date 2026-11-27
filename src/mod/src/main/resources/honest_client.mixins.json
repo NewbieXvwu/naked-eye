@@ -1,0 +1,14 @@
+{
+  "required": true,
+  "package": "dev.honest.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "MouseHandlerMixin",
+    "GameRendererMixin",
+    "TickRateMixin", "LoadTrackerMixin",
+    "FramerateMixin", "SpectatorInputMixin", "SpectatorKeysMixin", "WindowCloseMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

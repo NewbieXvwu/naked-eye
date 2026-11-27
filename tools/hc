@@ -1,0 +1,229 @@
+#!/usr/bin/env python3
+"""hc — the agent's command line. Talks ONLY to the honest API on :7070.
+
+  hc obs                      what I perceive right now (+ new sounds/chat/task results)
+  hc map [r]                  top-down sketch of what I remember seeing
+  hc walk X Y Z [risk]        walk there with the built-in A* over remembered terrain
+  hc go X Y Z                 walk there with (honest) Baritone over remembered terrain
+  hc near X Y Z               walk until standing next to that block (Baritone)
+  hc pause [on|off]           pause the world to think / allow or forbid automatic pausing on alarms
+  hc speed [N]                fast-forward everything N times (server and client together; the client must keep up)
+  hc pause idle on|off        freeze the world whenever nothing is running (default on: the world waits while I think)
+  hc cave                     places I know nearby as a graph: walk / one-way drops / climbs, unexplored openings, marks
+  hc recall BLOCK             where do I remember seeing it (lava, water, iron_ore…), nearest first
+  hc sonar                    how far I can walk in each of 8 directions (and what stops me)
+  hc goto P3|F1|NAME          go to a place / frontier from the last `hc cave`, or a mark
+  hc mark NAME                remember where I'm standing (shows up in `hc cave`)
+  hc drop ITEM,ITEM|SLOT     throw away whole stacks
+  hc scoop X Y Z              fill an empty bucket from that water/lava source (finds a clear line to it)
+  hc open X Y Z               right-click a block (table, furnace, chest…) — makes sure the crosshair is on it
+  hc place X Y Z [item]      put a block (from the hotbar) into that empty cell
+  hc stairs DIR N [a,b]       dig a staircase down N steps toward DIR; stops on liquid/drop/damage/seeing a or b
+  hc spiral DIR N [a,b] [grab] spiral staircase straight down (turns right every 2 steps, stays within 3x3)
+  hc tunnel DIR N [a,b]       same, flat 1x2 tunnel (branch mining)
+  hc upstairs DIR N [a,b]     dig a staircase UP (enclosed way out of a hole)
+                              4th arg: ores to mine on the way without stopping, e.g. coal_ore,iron_ore
+  hc watch [sec]              keep waiting on the current task; returns when it ends or on alarm
+  hc goy Y [a,b]              get to Y level, digging stairs through assumed rock; stop if a/b seen
+  hc go X Y Z [a,b]           (optional 4th arg: stop as soon as a block containing a or b is in view)
+  hc dig X Y Z                break a block I can see
+  hc fight ID [nocrit] [kite] [axe] [stop=6]  melee with jump crits (kite = back off while recharging); stops at low HP
+  hc hit ID [swings]          attack a visible entity
+  hc use X Y Z                aim at a point and right-click (place / open / interact)
+  hc look YAW PITCH | hc lookat X Y Z | hc turn DYAW [DPITCH] | hc around [pitch]
+  hc hold KEY... [ticks]      e.g. hc hold forward jump 20
+  hc click SLOT [button] [pickup|quick_move|swap]   click a slot of the open screen
+  hc eat                      eat the best food in the hotbar
+  hc track ID                 keep the crosshair on an entity while it stays in view (hc track = off)
+  hc slot N | hc tohotbar INVSLOT HOTBAR | hc craft ITEM [n] | hc close | hc stop | hc wait TICKS | hc say TEXT | hc respawn
+"""
+import json, os, sys, urllib.request
+
+API = "http://127.0.0.1:7070"
+CUR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "run", ".hc_cursor"); os.makedirs(os.path.dirname(CUR), exist_ok=True)
+
+def get(path):
+    with urllib.request.urlopen(API + path, timeout=60) as r: return json.load(r)
+
+def post(obj):
+    req = urllib.request.Request(API + "/act", data=json.dumps(obj).encode(), method="POST")
+    with urllib.request.urlopen(req, timeout=90) as r: return json.load(r)
+
+def cursor():
+    try: return int(open(CUR).read())
+    except Exception: return 0
+
+def fmt(o):
+    if "self" not in o: print(json.dumps(o)); return
+    s = o["self"]; out = []
+    held = next((i["item"] for i in s.get("inventory", []) if i["slot"] == s["selected_slot"]), "empty hand")
+    flags = " ".join(k for k in ("in_water", "on_fire", "dead") if s.get(k))
+    if s.get("paused"): out.append(f"⏸  PAUSED — {s['paused']}  (any action resumes)")
+    out.append(f"HP {s['health']}/{s['max_health']}  food {s['food']}  armor {s['armor']}  xp {s['xp_level']}"
+               + (f"  air {s['air_bubbles']}" if 'air_bubbles' in s else "") + (f"  [{flags}]" if flags else ""))
+    out.append(f"at {s['pos']} facing {s['facing']} (yaw {s['yaw']}, pitch {s['pitch']})  {s['dimension'].split(':')[-1]}/{s['biome']}  "
+               f"{s['time']}{'  ⛈ '+s['weather'] if s.get('weather') else ''}  light {s['light']}  holding [{s['selected_slot']}] {held}"
+               + (f"  SCREEN: {s['open_screen']}" if 'open_screen' in s else ""))
+    inv = ", ".join(f"{i['item']}x{i['count']}@{i['slot']}" + (f"({i['durability_pct']}%)" if 'durability_pct' in i else "") for i in s.get("inventory", []))
+    out.append("inventory: " + (inv or "(empty)"))
+    if "container" in s:
+        ct = s["container"]
+        slots = ", ".join(f"[{q['slot']}]{q['item']}" + (f"x{q['count']}" if 'count' in q else "") + (f"(inv{q['your_inv_slot']})" if 'your_inv_slot' in q else "") for q in ct["slots"])
+        extra = f"  lit={ct['lit']} flame={ct['flame_pct']}% arrow={ct['arrow_pct']}%" if "lit" in ct else ""
+        out.append(f"open {ct['kind']}: {slots}{extra}" + (f"  cursor: {ct['on_cursor']}" if 'on_cursor' in ct else ""))
+    c = o["crosshair"]
+    out.append("crosshair: " + (f"{c['block']} at {c['pos']} ({c['face']} face)" if "block" in c else
+                                 f"entity {c['entity']} ({c['type']})" if "entity" in c else "nothing"))
+    ents = o.get("entities", [])
+    out.append(f"I see {len(ents)} creature(s)/thing(s):" if ents else "I see no creatures.")
+    for e in ents:
+        side = "ahead" if abs(e['bearing']) < 10 else (f"{e['bearing']}° right" if e['bearing'] > 0 else f"{-e['bearing']}° left")
+        extra = e.get("looks", {}); gear = e.get("gear", {})
+        desc = ", ".join(f"{k}={v}" for k, v in extra.items())
+        out.append(f"  #{e['id']} {e['type']}{(' ('+e['item']+')') if 'item' in e else ''} ~{e['dist']}m {side}, elev {e['elevation']}° "
+                   f"≈{e['approx_pos']}" + (f"  looks: {desc}" if desc else "") + (f"  gear: {gear}" if gear else "")
+                   + ("  (too far to make out)" if e.get("detail") else ""))
+    for l in o.get("recently_lost_sight_of", []):
+        out.append(f"  ↶ lost #{l['id']} {l['type']} {l['lost_s_ago']}s ago: {l['how']}, was ~{l['last_dist']}m"
+                   + (f", moving {l['was_moving']}" if 'was_moving' in l else "") + f"; now {l['probably_now']}")
+    bv = o.get("blocks_in_view", [])
+    if bv:
+        out.append("blocks in view (nearest): " + ", ".join(f"{b['block']}@{b['nearest']}~{b['dist']}m" for b in bv[:14])
+                   + (f" … +{len(bv)-14} more types" if len(bv) > 14 else ""))
+    out.append(f"remembered blocks: {o.get('known_blocks')}   task: {o['control']['task']}   last: {o['control']['last_result']}")
+    lines = []
+    for ev in o.get("events", []):
+        if ev["kind"] == "sound":
+            l = f"  🔊 {ev['subtitle']} ({ev.get('loudness','')}, {ev.get('direction','?')})"
+        else:
+            l = f"  💬 [{ev['kind']}] {ev['text']}"
+        if lines and lines[-1][0] == l: lines[-1][1] += 1
+        else: lines.append([l, 1])
+    # repetitive noise (mining = break/plop over and over): fold runs, and keep only the latest 25 lines
+    lines = [l if n == 1 else f"{l} ×{n}" for l, n in lines]
+    if len(lines) > 25: out.append(f"  … {len(lines)-25} earlier event lines omitted"); lines = lines[-25:]
+    out += lines
+    if "cursor" in o: open(CUR, "w").write(str(o["cursor"]))
+    print("\n".join(out))
+
+def act(obj, wait=400):
+    obj.setdefault("wait", wait); obj["cursor"] = cursor()
+    # me typing a command = a decision, so it resumes a paused game; scripts set HC_SCRIPT=1 and get refused instead
+    if os.environ.get("HC_SCRIPT") != "1": obj["resume"] = True
+    if os.environ.get("HC_FRAME") == "1":   # frame-by-frame play: queue the input, keep the world frozen, `hc step N` runs it
+        obj.pop("resume", None); obj["keep_paused"] = True; obj["wait"] = 0
+    r = post(obj)
+    if r.get("result") not in ("ok",): print("->", r.get("result"))
+    if r.get("woke"): print("⚠️  woke early:", r["woke"])
+    if "observation" in r: fmt(r["observation"])
+
+def main(a):
+    if not a or a[0] in ("-h", "--help", "help"): print(__doc__); return
+    c, x = a[0], a[1:]
+    n = lambda i: float(x[i])
+    if c == "obs": fmt(get(f"/observe?cursor={cursor()}"))
+    elif c == "map": print(get(f"/map?r={x[0] if x else 12}")["sketch"])
+    elif c == "walk": act({"type": "walk", "x": n(0), "y": n(1), "z": n(2), "risk": n(3) if len(x) > 3 else 2.0}, 1200)
+    elif c == "go":
+        o = {"type": "go", "x": n(0), "y": n(1), "z": n(2)}
+        if len(x) > 3: o["until"] = x[3].split(",")
+        act(o, 3600)
+    elif c == "watch":   # keep waiting on the running task (60 s per poll) until it ends or something wakes us
+        import time
+        t_end = time.time() + (float(x[0]) if x else 900)
+        while time.time() < t_end:
+            r = post({"type": "wait", "wait": 1200, "until_idle": True, "cursor": cursor()})
+            # 'wait' doesn't end with the task, so check status ourselves
+            if str(r.get("result", "")).startswith("refused"):   # paused: watching is not deciding, so don't resume
+                print("⏸ ", r["result"]); fmt(get(f"/observe?cursor={cursor()}")); return
+            st = get("/status")
+            if r.get("woke") or st["task"] == "idle":
+                if r.get("woke"): print("⚠️  woke early:", r["woke"])
+                fmt(r["observation"]); return
+        fmt(get(f"/observe?cursor={cursor()}"))
+    elif c == "speed":   # hc speed 3  = the whole game (server AND this client) at 3x; the client must keep pace
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); from rcon import run
+        print(run([f"tick rate {round(20 * float(x[0]))}"])[0] if x else run(["tick query"])[0])
+    elif c == "pause":   # hc pause on|off  (allow automatic pausing)   |   hc pause  (pause now to think)
+        if x and x[0] in ("on", "off"): act({"type": "pause_policy", "allow": x[0] == "on"}, 2)
+        elif x[:1] == ["idle"] and x[1:2] in (["on"], ["off"]): act({"type": "pause_policy", "idle": x[1] == "on"}, 2)
+        else: act({"type": "pause", "why": " ".join(x) or "thinking"}, 2)
+    elif c == "step":   # hc step N [key key ...]: hold those keys for exactly N ticks of a frozen world, then look
+        keys = x[1:]
+        if keys: post({"type": "hold", "keys": keys, "ticks": int(x[0]), "cursor": cursor(), "keep_paused": True})
+        r = post({"type": "step", "ticks": int(x[0]) if x else 5, "cursor": cursor()})
+        print("->", r.get("result")); fmt(r["observation"])
+    elif c == "eat":   # hc eat — eat the best food in the hotbar (hold right-click ~1.7 s), then go back to the held slot
+        o = get("/observe"); inv = o["self"]["inventory"]; cur = o["self"].get("selected_slot", 0)
+        pref = ["golden_carrot", "cooked_beef", "cooked_porkchop", "cooked_mutton", "cooked_salmon", "cooked_cod", "cooked_chicken", "bread", "baked_potato", "cooked_rabbit", "apple", "carrot", "salmon", "cod", "tropical_fish", "dried_kelp", "sweet_berries", "melon_slice", "rotten_flesh"]
+        food = sorted([i for i in inv if i["item"] in pref and i["slot"] < 9], key=lambda i: pref.index(i["item"]))
+        if not food: print("no food in the hotbar"); return
+        act({"type": "hotbar", "slot": food[0]["slot"]}, 1); act({"type": "hold", "keys": ["use"], "ticks": 36}, 38)
+        act({"type": "hotbar", "slot": cur}, 1); print("ate", food[0]["item"])
+    elif c == "track": act({"type": "track", "id": int(x[0]) if x else 0}, 2)   # lock the view on a nearby entity (0 = off)
+    elif c == "cave": print(get("/places")["text"])
+    elif c == "sonar": print(get("/sonar")["text"])
+    elif c == "recall": print(get(f"/recall?block={x[0]}")["text"])
+    elif c == "goto": act({"type": "goto", "id": x[0]}, 1200)
+    elif c == "mark": act({"type": "mark", "name": x[0]}, 2)
+    elif c == "unmark": act({"type": "mark", "name": x[0], "remove": True}, 2)
+    elif c == "drop":   # hc drop dirt,gravel   (or slot numbers) — throws whole stacks
+        inv = get("/observe")["self"]["inventory"]
+        want = x[0].split(",")
+        slots = [i["slot"] for i in inv if i["item"] in want or str(i["slot"]) in want]
+        act({"type": "drop", "slots": slots}, 4)
+    elif c == "scoop": act({"type": "scoop", "x": n(0), "y": n(1), "z": n(2)}, 200)
+    elif c == "pour": act({"type": "use_at", "x": n(0), "y": n(1), "z": n(2)}, 20)
+    elif c == "open": act({"type": "interact", "x": n(0), "y": n(1), "z": n(2)}, 200)
+    elif c == "place":   # hc place X Y Z [item]   |   hc place ITEM   (somewhere next to me, on the ground)
+        if len(x) == 1: o = {"type": "place", "item": x[0]}
+        else:
+            o = {"type": "place", "x": n(0), "y": n(1), "z": n(2)}
+            if len(x) > 3: o["item"] = x[3]
+        act(o, 200)
+    elif c in ("stairs", "tunnel", "spiral", "upstairs"):
+        o = {"type": "mine", "dir": x[0], "steps": int(x[1]) if len(x) > 1 else 16, "down": c not in ("tunnel", "upstairs"), "up": c == "upstairs"}
+        if c == "spiral": o["spiral"] = 2
+        if len(x) > 2 and x[2] != "-": o["until"] = x[2].split(",")
+        if len(x) > 3: o["grab"] = x[3].split(",")
+        act(o, 1200)
+    elif c == "goxz":   # hc goxz X Z [a,b] — head for a column, any height (explores unseen land assuming the ground continues)
+        o = {"type": "go", "x": int(float(x[0])), "z": int(float(x[1]))}
+        if len(x) > 2: o["until"] = x[2].split(",")
+        act(o, 1200)
+    elif c == "goy":
+        o = {"type": "go", "y_level": int(x[0])}
+        if len(x) > 1: o["until"] = x[1].split(",")
+        act(o, 3600)
+    elif c == "near": act({"type": "go", "near": True, "x": n(0), "y": n(1), "z": n(2)}, 3600)
+    elif c == "dig": act({"type": "dig", "x": n(0), "y": n(1), "z": n(2)})
+    elif c == "fight":  # hc fight ID [nocrit] [nokite] [axe] [stop=N]
+        o = {"type": "fight", "id": int(x[0]), "crit": "nocrit" not in x, "kite": "kite" in x, "weapon": "axe" if "axe" in x else "auto", "wall": "wall" in x}
+        for a in x:
+            if a.startswith("stop="): o["stop_hp"] = float(a[5:])
+        act(o, 1200)
+    elif c == "hit": act({"type": "hit", "id": int(x[0]), "swings": int(x[1]) if len(x) > 1 else 1})
+    elif c == "use": act({"type": "use_at", "x": n(0), "y": n(1), "z": n(2)}, 60)
+    elif c == "look": act({"type": "look", "yaw": n(0), "pitch": n(1), "wait": 12}, 12)
+    elif c == "lookat": act({"type": "look_at", "x": n(0), "y": n(1), "z": n(2)}, 12)
+    elif c == "turn": act({"type": "turn", "dyaw": n(0), "dpitch": n(1) if len(x) > 1 else 0}, 12)
+    elif c == "around": act({"type": "look_around", "pitch": n(0) if x else 10}, 200)
+    elif c == "hold":
+        ticks = int(x[-1]) if x and x[-1].isdigit() else 20
+        keys = [k for k in x if not k.isdigit()]
+        act({"type": "hold", "keys": keys, "ticks": ticks}, ticks + 2)
+    elif c == "slot": act({"type": "hotbar", "slot": int(x[0])}, 2)
+    elif c == "tohotbar": act({"type": "to_hotbar", "slot": int(x[0]), "hotbar": int(x[1])}, 4)
+    elif c == "craft": act({"type": "craft", "item": x[0], "count": int(x[1]) if len(x) > 1 else 1})
+    elif c == "click": act({"type": "slot_click", "slot": int(x[0]), "button": int(x[1]) if len(x) > 1 else 0,
+                            "mode": x[2] if len(x) > 2 else "pickup"}, 4)
+    elif c == "close": act({"type": "close_screen"}, 2)
+    elif c == "stop": act({"type": "stop"}, 2)
+    elif c == "wait": act({"type": "wait"}, int(x[0]) if x else 20)
+    elif c == "say": act({"type": "chat", "text": " ".join(x)}, 10)
+    elif c == "respawn": act({"type": "respawn"}, 40)
+    elif c == "status": print(json.dumps(get("/status"), ensure_ascii=False))
+    else: print("unknown command; hc help")
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

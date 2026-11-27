@@ -1,0 +1,4 @@
+[submodule "src/baritone"]
+	path = src/baritone
+	url = https://github.com/NewbieXvwu/baritone.git
+	branch = naked-eye
