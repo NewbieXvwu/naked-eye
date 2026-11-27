@@ -48,12 +48,13 @@ def count(o, item):
 
 
 # The staircase's rules live in agent/safety.py, shared by every macro script (gather, shelter, mine).
-from safety import (HOSTILE, LOW_HP, HOSTILE_METRES, hostiles, stop_reason, in_spawn_cavern,  # noqa: E402,F401
-                      near_water)
+from safety import (HOSTILE, LOW_HP, HOSTILE_METRES, hostiles, stop_reason,  # noqa: E402,F401
+                    in_spawn_cavern, near_water, hold_tool, close_screen)
 
 
 def main(argv):
-    args = [a for a in argv if not a.startswith("-")]
+    # a target below zero is still a target: "-54" is a number, "--steps" is a flag
+    args = [a for a in argv if not a.startswith("--") and not (a.startswith("-") and not a.lstrip("-").isdigit())]
     if not args:
         print(__doc__)
         return 2
@@ -89,12 +90,16 @@ def main(argv):
               f"Walk inland first, or pass --force.")
         return 2
     start_hp = o["self"].get("health")
+    floor = LOW_HP
+    if "--min-hp" in argv:
+        # No food in the whole world: a human at 14 HP still digs. The floor is a promise, not a law.
+        floor = int(argv[argv.index("--min-hp") + 1])
     plugs = 0
     res = ""
     print(f"descending from y={y0} to y={target}")
     for i in range(60):
         o = obs()
-        why = stop_reason(o, res, start_hp)
+        why = stop_reason(o, res, start_hp, min_hp=floor)
         if why:
             print("stopping:", why)
             return 2
@@ -108,6 +113,12 @@ def main(argv):
         if torches == 0 and torch_every:
             print("out of torches — going on unlit would spawn mobs behind me; stopping")
             return 2
+        # A pickaxe in the bag mines nothing: the staircase would say "nothing in my hotbar can
+        # mine stone" for every step. Put the best one in the hand before asking it to dig.
+        close_screen(act, o)   # a screen left open swallows the dig (it answers "timeout")
+        if hold_tool(act, o) is None:
+            print("no pickaxe in the inventory — nothing to dig with")
+            return 2
         r = act({"type": "mine", "dir": direction, "steps": steps, "spiral": 2,
                  "torch_every": torch_every, "grab": grab, "wait": 1200, "resume": True})
         o2 = r.get("observation", {})
@@ -117,7 +128,7 @@ def main(argv):
             print("  woke:", r["woke"], flush=True)
         # Hand the whole response to the shared rules: the alarm text lives in "woke", not "result".
         # (Death #5: a "FALLING — LETHAL" wake was invisible here, so the script resumed and died.)
-        why = stop_reason(o2, r, start_hp)
+        why = stop_reason(o2, r, start_hp, min_hp=floor)
         if why:
             print("stopping:", why)
             return 1 if why == "dead" else 2
@@ -127,7 +138,7 @@ def main(argv):
         if gap and plugs < 12:
             gx, gy, gz = (int(g) for g in gap.groups())
             filler = next((i["item"] for i in o["self"].get("inventory", [])
-                           if i["item"] in ("dirt", "cobblestone", "stone", "andesite", "gravel")), None)
+                           if i["item"] in ("dirt", "cobblestone", "stone", "andesite", "gravel", "oak_planks", "jungle_planks", "birch_planks", "spruce_planks", "dark_oak_planks", "acacia_planks", "mangrove_planks", "cherry_planks", "pale_oak_planks", "oak_log", "jungle_log")), None)
             if filler:
                 pr = act({"type": "place", "x": gx, "y": gy, "z": gz, "item": filler, "wait": 60, "resume": True})
                 print(f"  plugged the hole at {gx},{gy},{gz} with {filler}:",
