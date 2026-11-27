@@ -5,10 +5,12 @@ import json, math, sys, urllib.request
 
 from hcapi import API  # which client? HC_AGENT (see hcapi.py)
 def get(p):
-    with urllib.request.urlopen(API + p, timeout=60) as r: return json.load(r)
+    # no timeout: the world stands still while another agent thinks, and a socket timeout
+# would then look like "the dig failed" (HC_TIMEOUT=None means wait as long as it takes)
+    with urllib.request.urlopen(API + p, timeout=None) as r: return json.load(r)
 def act(o):
     req = urllib.request.Request(API + "/act", data=json.dumps(o).encode(), method="POST")
-    with urllib.request.urlopen(req, timeout=120) as r: res = json.load(r)
+    with urllib.request.urlopen(req, timeout=None) as r: res = json.load(r)
     if str(res.get("result", "")).startswith("refused"):   # the game paused on an alarm: stop the script, hand back to the brain
         print("⏸ script stopped:", res["result"]); sys.exit(3)
     return res
@@ -22,7 +24,9 @@ def main(direction="east", steps=8, want="stone"):
         # what will we break? look first
         targets = [(x + dx, y + 1, z + dz), (x + dx, y, z + dz), (x + dx, y - 1, z + dz)]
         for t in targets:
-            r = act({"type": "dig", "x": t[0], "y": t[1], "z": t[2], "wait": 300})
+            # force: the step under my feet is exactly the block I stand on, and the guard
+            # refuses that whenever it can see a drop below - for a staircase that is the point.
+            r = act({"type": "dig", "x": t[0], "y": t[1], "z": t[2], "force": True, "wait": 300})
             obs = r["observation"]
             last = obs["control"]["last_result"]
             seen = {b["block"] for b in obs["blocks_in_view"]}

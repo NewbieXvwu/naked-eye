@@ -116,6 +116,14 @@ description: "Use when playing or developing Naked Eye (眼见为实), the naked
 - **背包里有方块 ≠ 手里有方块**：`place` 是用「手上拿的东西」右键，不是从背包里取。第九命之后的第二段：连着五次封顶都回 `couldn't place (tried 3 faces, 5 spots each; last: clicked 3x, nothing appeared)`，其实土在背包第 8 格、手里空着。放任何方块之前先 `hc tohotbar <背包格> <快捷栏0-8>` 再 `hc slot N`，然后看 obs 的 `holding [N] …` 确认；脚本里要封装成 `hold_item()`（shelter.py 现在有，42 个测试）。
 - `hc dig`/`craft`/`walk` 之后手上拿的东西可能变掉，放方块前的第一件事永远是重新确认 `holding`。
 
+- **`hc tunnel` 的第三个参数是 `until`，不是「顺便挖」**：`hc tunnel north 16 iron_ore,coal_ore` 一看到矿就停（常常是 `saw coal_ore at … after 0 steps`，一步没挖）；「边挖边收」必须写 `hc tunnel north 16 - iron_ore,coal_ore`（`-` = 不设 until）。`hc spiral` 同理。
+- **`hc stairs` 只在头顶是实体岩石时能用**：在隧道里、洞穴里、树桩坑里，它要挖的格子是空气，任务会一直等到 `couldn't dig …: timeout`。要么先走到开阔地，要么用 `agent/staircase.py`（自己在脚下挖三格 + 走一格）。
+- **楼梯必须带 `force: true`**：mod 的护栏会拒绝「挖脚下、而下面还有 1 m 落差」的方块，可那一步正是楼梯本身。`staircase.py` 现在每一下都带 force；不带就只能卡在原地。
+- **脚本里的 socket 超时会把「世界被冻住」误判成失败**：三个玩家一起时，只要有人在思考，世界就不动，`urlopen(..., timeout=60)` 会抛 TimeoutError。所有 `agent/*.py` 都要 `timeout=None`，让请求一直等。
+- **多 Agent 时脚本必须用 `agent/hcapi.py` 解析端口**：以前 11 个脚本都写死 `127.0.0.1:7070`（＝领队本人），队友跑 `kelp.py` 时游的是我的角色。`export HC_AGENT=Builder` + `from hcapi import API` 之后各驱动各的。
+- **这个世界的食物答案：干海带**。生海带（`kelp`）`hc eat` 永远回 `no bite (still N)`；先经熔炉 `agent/smelt.py … kelp N --fuel oak_planks` 变成 `dried_kelp` 就能吃，吃到食物 20 就开始自然回血。取海带用 `agent/kelp.py 15`（下潜到每列最低的 `kelp_plant`，气泡剩 4 格就上游，挖 32 下）。
+- **找动物用 `hc around`**（`lost #224 chicken` 会给方向和距离）；站着转 24 个 yaw 只说明「我视野里没有生物」，不代表附近没有。
+
 ## 4. 验尸流程（每次死亡后都要做）
 
 1. **用 `tools/review.py` 重建现场**（`open` 最新录像 → `report`，需要时 `goto` 到某个时刻，再看 `agent` / `god`），**按机制归因**，不要只写"被僵尸打死"。回答两个问题：它当时感知到了什么？实际上周围有什么？前者够用却做错了，是打法问题；它根本不可能知道，是感知或反射要补。
@@ -126,7 +134,7 @@ description: "Use when playing or developing Naked Eye (眼见为实), the naked
 
 ## 5. 战绩
 
-- 本机接管（第五局，进行中）：新开一档，死了 9 次。①夜里空手没封成顶，被骷髅射死；②挖竖井 13 格摔到 1 血，脚本无视告警继续挖，被骷髅补刀；③日出开封顶时僵尸就在 5 m 内，空手 6 血被打死。三条都改成了代码：`shelter.py`（封顶 + `--out`）、`descend.py`（`stop_reason`）、`gather.py`（同一个护栏）。④在出生点的洞穴顶盖上向下挖，第一步踩空，y135 → y100 摔死；新增 `probe.py`（挖一格、低头看 crosshair 再决定走不走），打法手册写上「出生点是洞穴顶盖」。⑤又在出生点山坡 (73,134,-8) 往南挖台阶去挖 y129 的铁矿，挖穿洞顶从 y134 掉到 y106；mod 已经喊 `FALLING — LETHAL`，`descend.py` 只读 `result` 没读 `woke`，还发了个 wait 去"看看情况"，等于把世界解冻，摔死。修复：`safety.res_text()` 把 `woke` 并进判定，FALLING/LETHAL 一律停；`descend.py` 把整条回包交给 `stop_reason`；新增 3 个测试。⑥`descend.py` 又被派去 (94,129,-15) 往南挖 y110，挖穿同一片洞顶；落地水没有、方块也放不了，掉到 y89 摔死。新增 `SPAWN_CAVERN` 盒子（x 58..112，z -48..30），在盒子里 `descend.py` 直接拒开工。⑦在石岸山脚往 y16 挖铁，挖穿海床下的含水层淹死；`stop_reason` 现在认 `drown / out of air / head underwater` 和 ≤3 格气泡，`descend.py`/`ores.py` 对「岸边有水」拒开工（`near_water`）。⑧5 血、饿着，为捞海带游进海里，被 drowned 拖在水下打死；`stop_reason` 新增「水里 + 24 m 内有 drowned」和「≤8 血 + 在水里」两条硬停，3 个测试。⑨夜里 5 血，僵尸从背后打了一下把世界吓停，`shelter.py` 的每条指令都被 `refused`（要 `resume: true`）却照样跑完并谎报「已封顶」，人还站在地面，被僵尸补死；修复：`act()` 遇 PAUSED 自动 resume 重发，`main()` 结尾验证 y 真的下降，否则报失败；2 个测试。
+- 本机接管（第五局，进行中）：新开一档，死了 10 次。①夜里空手没封成顶，被骷髅射死；②挖竖井 13 格摔到 1 血，脚本无视告警继续挖，被骷髅补刀；③日出开封顶时僵尸就在 5 m 内，空手 6 血被打死。三条都改成了代码：`shelter.py`（封顶 + `--out`）、`descend.py`（`stop_reason`）、`gather.py`（同一个护栏）。④在出生点的洞穴顶盖上向下挖，第一步踩空，y135 → y100 摔死；新增 `probe.py`（挖一格、低头看 crosshair 再决定走不走），打法手册写上「出生点是洞穴顶盖」。⑤又在出生点山坡 (73,134,-8) 往南挖台阶去挖 y129 的铁矿，挖穿洞顶从 y134 掉到 y106；mod 已经喊 `FALLING — LETHAL`，`descend.py` 只读 `result` 没读 `woke`，还发了个 wait 去"看看情况"，等于把世界解冻，摔死。修复：`safety.res_text()` 把 `woke` 并进判定，FALLING/LETHAL 一律停；`descend.py` 把整条回包交给 `stop_reason`；新增 3 个测试。⑥`descend.py` 又被派去 (94,129,-15) 往南挖 y110，挖穿同一片洞顶；落地水没有、方块也放不了，掉到 y89 摔死。新增 `SPAWN_CAVERN` 盒子（x 58..112，z -48..30），在盒子里 `descend.py` 直接拒开工。⑦在石岸山脚往 y16 挖铁，挖穿海床下的含水层淹死；`stop_reason` 现在认 `drown / out of air / head underwater` 和 ≤3 格气泡，`descend.py`/`ores.py` 对「岸边有水」拒开工（`near_water`）。⑧5 血、饿着，为捞海带游进海里，被 drowned 拖在水下打死；`stop_reason` 新增「水里 + 24 m 内有 drowned」和「≤8 血 + 在水里」两条硬停，3 个测试。⑨夜里 5 血，僵尸从背后打了一下把世界吓停，`shelter.py` 的每条指令都被 `refused`（要 `resume: true`）却照样跑完并谎报「已封顶」，人还站在地面，被僵尸补死；修复：`act()` 遇 PAUSED 自动 resume 重发，`main()` 结尾验证 y 真的下降，否则报失败；2 个测试。⑩复活后在平原上 4 血站着转镜头找动物，骷髅一箭从南边射来打死；教训是「没有护栏的临时循环不能在夜里或黑暗地形跑」，找动物改用 `hc around`。
 - 第二局：挖到钻石（第 3 条命）。
 - 第四局：死到第 21 次，两次凑齐下界材料都没能进去。
 - 第五局起：思考时世界冻结（空闲暂停），`hc speed auto` 自动定倍速，`hc note` 解说，死后用 `tools/review.py` 复盘。
