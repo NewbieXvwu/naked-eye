@@ -15,6 +15,8 @@ import re
 import sys
 import urllib.request
 
+sys.path.insert(0, __file__.rsplit('/', 1)[0])
+
 API = "http://127.0.0.1:7070"
 ORES = ["coal_ore", "deepslate_coal_ore", "iron_ore", "deepslate_iron_ore", "copper_ore",
         "deepslate_copper_ore", "gold_ore", "deepslate_gold_ore", "redstone_ore",
@@ -45,48 +47,8 @@ def count(o, item):
     return sum(i["count"] for i in o["self"].get("inventory", []) if i["item"] == item)
 
 
-HOSTILE = ("zombie", "skeleton", "creeper", "spider", "enderman", "witch", "drowned", "husk",
-           "stray", "pillager", "zombie_villager", "phantom", "slime", "magma_cube", "blaze",
-           "ghast", "piglin", "hoglin", "wither_skeleton", "guardian", "elder_guardian")
-
-# The rules a staircase must obey. Death #2 taught each of them:
-#   - a 13-block fall took 20 HP to 1; the script then re-sent the mine with resume:true and kept digging,
-#     and a skeleton 15 m away in the dark shot the last HP off. A human would have eaten and left.
-#   - the mod's pause ("a zombie is on me", "hurt") is a question, not a hiccup: resume:true answers it
-#     "carry on with the old plan", which is almost never the right answer mid-fall.
-LOW_HP = 14          # at or below: stop and eat/retreat, never dig on
-HOSTILE_METRES = 16  # an unlit stone-walled shaft has no business having this close to it
-
-
-def stop_reason(o, res="", start_hp=None):
-    """Why this staircase must stop now (a human sentence), or None to keep digging.
-
-    o is a full /observe answer, res the last_result from the mine action."""
-    me = o.get("self", {})
-    if me.get("dead"):
-        return "dead"
-    hp = me.get("health")
-    if hp is not None:
-        if hp <= LOW_HP:
-            return f"HP {hp} is too low to dig on — eat or save myself first"
-        if start_hp is not None and hp < start_hp:
-            return f"lost HP ({start_hp} -> {hp}) — something got me, deal with it before digging"
-    r = (res or "").lower()
-    if "took damage" in r or "fell" in r:
-        return f"took damage: {res}"
-    for bad in ("lava", "refused", "won't", "stuck", "blocked", "died", "couldn't dig"):
-        if bad in r:
-            return res
-    close = []
-    for e in o.get("entities", []):
-        name = (e.get("type") or e.get("name") or "").lower()
-        if any(h in name for h in HOSTILE):
-            d = e.get("dist")
-            if d is not None and d <= HOSTILE_METRES:
-                close.append(f"{name}#{e.get('id')} {d:.1f} m")
-    if close:
-        return "hostiles near: " + ", ".join(close)
-    return None
+# The staircase's rules live in agent/safety.py, shared by every macro script (gather, shelter, mine).
+from safety import HOSTILE, LOW_HP, HOSTILE_METRES, hostiles, stop_reason  # noqa: E402,F401
 
 
 def main(argv):

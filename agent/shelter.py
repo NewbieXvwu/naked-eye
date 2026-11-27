@@ -8,6 +8,7 @@ skeleton at 6 m shot the player from 16 HP to 0 while it tried to step in. Every
 player's own y afterwards, walks the drops up by hand if needed, and refuses to start with mobs close.
 
 usage: agent/shelter.py [--force]   (exit 0 = capped, 2 = refused/aborted, 1 = failed)
+       agent/shelter.py --out       (morning: check the way out is clear, open the cap, climb out)
 """
 import json, math, sys, urllib.request
 
@@ -68,6 +69,40 @@ def cap_item(o):
     return None
 
 
+def exit_reason(o, within=12):
+    """Why it is not safe to open the cap yet, or None. Death #3: the cap came off at dawn with a
+    zombie 5 m away, and the player climbed out bare-handed at 6 HP."""
+    close = nearby_hostiles(o, within)
+    if close:
+        return "not opening the cap: " + ", ".join(f"{e['type']} {e['dist']:.1f} m" for e in close)
+    if o.get("self", {}).get("health", 20) <= 6:
+        return f"not opening the cap: HP {o['self']['health']} is too low to run into the open"
+    return None
+
+
+def leave_hole():
+    o = obs()
+    if o["self"].get("dead"):
+        print("dead; respawn first")
+        return 1
+    why = exit_reason(o)
+    if why:
+        print(why)
+        return 2
+    fx, fy, fz = feet(o)
+    cx, cy, cz = cap_cell(fx, fy, fz)
+    print("opening the cap at", (cx, cy, cz), "->",
+          act({"type": "dig", "x": cx, "y": cy, "z": cz, "wait": 200,
+               "resume": True}).get("observation", {}).get("control", {}).get("last_result"))
+    r = act({"type": "go", "near": True, "x": fx + 0.5, "y": cy + 1, "z": fz + 0.5, "wait": 400,
+             "resume": True})
+    print("out:", r.get("observation", {}).get("control", {}).get("last_result"))
+    o = obs()
+    print(f"at y={feet(o)[1]} (was {fy}), light={o['self'].get('light')}, "
+          f"hostiles near: {', '.join(e['type'] for e in nearby_hostiles(o, 16)) or 'none'}")
+    return 0
+
+
 def main(force):
     o = obs()
     if o["self"].get("dead"):
@@ -120,4 +155,6 @@ def main(force):
 
 
 if __name__ == "__main__":
+    if "--out" in sys.argv:
+        sys.exit(leave_hole())
     sys.exit(main("--force" in sys.argv))

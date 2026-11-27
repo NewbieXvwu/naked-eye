@@ -223,6 +223,7 @@ MARK entrance: 17 m west (behind-left), same level — reachable (P1)
 **前两条命的死因（按机制分类）**
 - 夜里空手被骷髅射死（20→18→13→0）：3 格洞挖下去了，人却没跟下去，挖出来的土落在洞底拿不到，封顶没有方块。→ `agent/shelter.py` 重写：每挖一格都核对自己在不在洞里，自己走进竖井、捡起掉落、按"头顶正上方"封，怪在 14 m 内拒绝开工；`hole.sh` 变成它的一行别名。
 - 挖竖井掉进 13 格深的洞（20 血→1 血），脚本无视告警把同一条 `mine` 又发一遍，被 15 m 外黑暗里的骷髅补了最后一箭。→ `agent/descend.py` 每次动作返回都先过 `stop_reason()`：死亡、≤14 血、掉血、摔伤、16 m 内有敌对生物、lava、被拒绝，命中即停；竖井撞到填不上的空洞也停（不再硬往下）。测试 `agent/tests/test_descend.py`。
+- 日出开封顶时僵尸就站在洞口 5 m 内（怪会站在封顶的土块上），空手 6 血，跑不过。→ `agent/shelter.py --out`：12 m 内有怪、或血 ≤6，就不开封顶；`agent/gather.py` 也接上了同一个护栏（掉血、低血、12 m 内有怪就停），它在死前那 10 秒里一直硬砍树（18→8 血）。护栏集中在 `agent/safety.py`，测试 `agent/tests/test_safety.py`。
 
 **顺手修掉的工具 bug**：`tools/review.py` 以前用录像元数据的 `epoch_time_ms` 找旁路日志，那是录像**打包时**写的，长局里晚好几分钟，于是 `open` 说找不到日志、`deaths`/`report` 静默。现在先用录像目录名当开局时间（`YYYY-MM-DD--HH-MM-SS`，本地时间）。
 

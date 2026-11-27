@@ -47,6 +47,9 @@ description: "Use when playing or developing Naked Eye (眼见为实), the naked
 - **被箭射中之后不要停下来挖洞**：骷髅在 13 m 外能一直射。先跑到看不见怪、拉开 30 m 再动手；手里有方块就边跑边放，有一格掩体也比站着挖强。
 - **雷暴天气会劈出骷髅骑兵**：它们戴着头盔，白天不会烧死，刷出来就不走了。一打雷就钻到地下。
 
+- **早晨开封顶之前先看/听上面**：怪会站在封顶的那块土上。第三命就是这么死的——日出时打开封顶钻出来，僵尸就在 5 m 内，空手 6 血，跑都跑不过。现在用 `python3 agent/shelter.py --out`：12 m 内有怪就不开，血 ≤6 也不开。
+- **刚重生的空手阶段最危险，砍树要一棵一棵来**：`gather.py` 现在自己会停（掉血、≤14 血、12 m 内有敌对生物就交还控制权），不要用 `hc dig` 硬砍到第二棵。
+
 **食物**
 - 难度是 easy，饿肚子只会把血扣到 10 HP，不会饿死；但血少就容易被别的东西打死。
 - 饱食度低于 16 时不要疾跑，Baritone 已经强制执行这一条。
@@ -87,6 +90,7 @@ description: "Use when playing or developing Naked Eye (眼见为实), the naked
 - verify 里的 `arena()` 会把 agent 从 y225 带着缓降放下去：要先落地，再清掉药水效果。
 - 端口一律从 `tools/ports.py` 取（槽位 +100×N），不要在代码里写死 7070/25575；新工具也要这样。
 - 冻结和解冻的裁决由服务端的 `Clock` 统一做：客户端只发 Hold(on/off)，有人按住，世界就停。不要再从客户端直接用 RCON 发 `tick freeze/unfreeze`，那样会抢掉别的 Agent 的暂停。"等 N tick"要用 `HonestClient.worldTicks`，`ticks` 在冻结期间也会照常增加。
+- **护栏只有一份**：`agent/safety.py` 里的 `stop_reason(obs, res, start_hp)` 和 `hostiles(obs)` 是所有宏脚本共用的"什么时候该交还控制权"（死亡 / ≤14 血 / 掉血 / took damage / 12 m 内有敌对生物 / lava / refused）。`gather.py`、`descend.py`、`shelter.py --out` 都调它，不要在脚本里各写一套；测试在 `agent/tests/test_safety.py`。
 - **脚本永远不要把 `resume: true` 当默认值**：告警暂停（"a zombie is on me"、"hurt 20 -> 1 HP"）是在问你还要不要按原计划继续，盲目 resume 等于替它回答"继续"。第二次死就是这样：摔到 1 血、反射刚砍死僵尸，脚本把同一条 `mine` 又发了一遍，15 m 外黑暗里的骷髅补了最后一箭。现在 `agent/descend.py` 每个动作返回都先过 `stop_reason()`（死亡 / ≤14 血 / 掉血 / "took damage" / 16 m 内有敌对生物 / lava / refused / 挖不动），命中就停并打印原因；测试在 `agent/tests/test_descend.py`。
 - `tools/review.py` 找旁路日志不能信录像元数据的 `epoch_time_ms`：那是录像**打包时**写的（一局结束），长局里比开局晚 7 分钟，`open` 会显示 "no flight log"，`deaths`/`report` 静默无输出。已改：先用录像目录名（`YYYY-MM-DD--HH-MM-SS`，本地时间）当开始时间，再退回 `epoch_time_ms`。
 - 一个"按住攻击键"的动作结束时，必须当场用 `Controller.letGoOfAttack` 松开。只要多按一个 tick，就会敲到后面的方块，下界那次被烫死就是这么来的。查这类问题，最有效的办法是 `tick rate 5` 慢放，再配合 RCON 逐 tick 记录方块状态。
@@ -107,7 +111,7 @@ description: "Use when playing or developing Naked Eye (眼见为实), the naked
 
 ## 5. 战绩
 
-- 本机接管（第五局，进行中）：新开一档。前两条命都是被骷髅射死：夜里空手没封成顶；挖竖井时 13 格摔到 1 血又被补刀。两回都改成了代码（`shelter.py`、`descend.py`）。
+- 本机接管（第五局，进行中）：新开一档，死了 3 次。①夜里空手没封成顶，被骷髅射死；②挖竖井 13 格摔到 1 血，脚本无视告警继续挖，被骷髅补刀；③日出开封顶时僵尸就在 5 m 内，空手 6 血被打死。三条都改成了代码：`shelter.py`（封顶 + `--out`）、`descend.py`（`stop_reason`）、`gather.py`（同一个护栏）。
 - 第二局：挖到钻石（第 3 条命）。
 - 第四局：死到第 21 次，两次凑齐下界材料都没能进去。
 - 第五局起：思考时世界冻结（空闲暂停），`hc speed auto` 自动定倍速，`hc note` 解说，死后用 `tools/review.py` 复盘。

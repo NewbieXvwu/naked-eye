@@ -4,7 +4,10 @@ given type within reach, then walking over visible drops. Uses only the honest A
 
   gather.py stone cobblestone 8
 """
-import json, math, sys, urllib.request
+import json, math, os, sys, urllib.request
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from safety import stop_reason  # noqa: E402  the rules every macro shares (see agent/safety.py)
 
 API = "http://127.0.0.1:7070"
 def get(p):
@@ -21,8 +24,15 @@ def count(obs, item):
 
 def main(block, item, want, max_steps=30):
     unreachable = set()   # drops I already failed to walk to (stuck in leaves, on a ledge...): don't loop on them
+    start_hp = get("/observe")["self"].get("health")
     for step in range(max_steps):
         o = get("/observe")
+        # Death #3: this loop kept chopping while a zombie hit the player from 18 HP to 8. Chopping is
+        # never worth being hit for: hand back to the brain, which can fight, flee or dig in.
+        why = stop_reason(o, start_hp=start_hp)
+        if why:
+            print(f"⏸ stopped: {why}")
+            return 3
         have = count(o, item)
         if have >= want:
             print(f"have {have} {item}"); return
