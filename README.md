@@ -216,6 +216,16 @@ MARK entrance: 17 m west (behind-left), same level — reachable (P1)
 - **伤因不再靠猜**（`Hurt.java`）：以前是拿字幕字符串（"falls on a block""Explosion"）加上 fallDistance 拼出来的，又脆又不准。现在直接读服务器每次伤害都会发给客户端的伤害事件（`ClientboundDamageEventPacket`，原版靠它决定屏幕往哪边歪），里面有伤害类型、攻击者和来源位置。对 Agent 的规则：伤害类型直接告诉它（人总知道自己是摔的、烧的还是饿的，死亡信息也会写明）；攻击者只有这一刻在画面上才说出名字，判断标准和 `obs` 是同一套。看不见的分三种说：off-screen（转头就能看到）、right in front of me that I can't make out（就在画面里，但太暗、被挡住或者隐身），以及远程攻击的 not in view（箭从哪里来，不等于射手站在哪里）；方向只给八个方位之一，相当于屏幕歪的那一下。测试见 T17。
 - 同时堵住了一个旧漏洞：原来的"a zombie right next to me"只检查有没有东西挡着，不检查视野，所以背后的怪也会被报出来。
 
+## 第五局：换到 Mac 上接着玩（进行中）
+
+云端那一局搬到这台 Mac 上，世界重开一档（旧的留在 `run/server/world-night1`）。本机已经有官方的 26.3，`setup.sh` 只做了硬链接（游戏本体、库、资源都没重下），`./setup.sh` 几秒跑完；`python3 tools/verify.py` 18/18 全过；`hc speed auto` 在这台 M 系列 Mac 上**稳到 10×**（2–10 都过），比云端 2 vCPU 那台（5×）快一倍。
+
+**前两条命的死因（按机制分类）**
+- 夜里空手被骷髅射死（20→18→13→0）：3 格洞挖下去了，人却没跟下去，挖出来的土落在洞底拿不到，封顶没有方块。→ `agent/shelter.py` 重写：每挖一格都核对自己在不在洞里，自己走进竖井、捡起掉落、按"头顶正上方"封，怪在 14 m 内拒绝开工；`hole.sh` 变成它的一行别名。
+- 挖竖井掉进 13 格深的洞（20 血→1 血），脚本无视告警把同一条 `mine` 又发一遍，被 15 m 外黑暗里的骷髅补了最后一箭。→ `agent/descend.py` 每次动作返回都先过 `stop_reason()`：死亡、≤14 血、掉血、摔伤、16 m 内有敌对生物、lava、被拒绝，命中即停；竖井撞到填不上的空洞也停（不再硬往下）。测试 `agent/tests/test_descend.py`。
+
+**顺手修掉的工具 bug**：`tools/review.py` 以前用录像元数据的 `epoch_time_ms` 找旁路日志，那是录像**打包时**写的，长局里晚好几分钟，于是 `open` 说找不到日志、`deaths`/`report` 静默。现在先用录像目录名当开局时间（`YYYY-MM-DD--HH-MM-SS`，本地时间）。
+
 ## 这一版踩到的坑
 
 1. **26.3 的加载界面**：要等"玩家所在区块编译成 GPU 网格"才会关闭，超时后兜底放行。无头模式下网格永远不会生成，所以用 `LoadTrackerMixin` 直接放行。区块数据其实已经到了，只是缺 GPU 网格。

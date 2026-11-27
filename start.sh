@@ -9,7 +9,9 @@ API=$(python3 tools/ports.py assign >/dev/null && python3 tools/ports.py api); R
 [ "$(python3 tools/ports.py slot)" != 0 ] && echo "instance slot $(python3 tools/ports.py slot): game port $(python3 tools/ports.py game), agent API $API"
 alive() { [ -f "run/$1.pid" ] && kill -0 "$(cat run/$1.pid)" 2>/dev/null; }
 # up = the API answers AND I am standing in the world (not still on the loading screen)
-up() { python3 -c "import urllib.request,json,sys; o=json.load(urllib.request.urlopen('http://127.0.0.1:$API/observe', timeout=5)); sys.exit(0 if 'self' in o and 'open_screen' not in o['self'] else 1)" 2>/dev/null; }
+# a dead player with "You Died!" open is still in the world: without this, starting again after a death
+# waited out the whole timeout and then said "client timed out"
+up() { python3 -c "import urllib.request,json,sys; o=json.load(urllib.request.urlopen('http://127.0.0.1:$API/observe', timeout=5)); s=o.get('self', {}); ok='open_screen' not in s or s.get('dead') or s.get('open_screen') in ('You Died!', 'Death'); sys.exit(0 if 'self' in o and ok else 1)" 2>/dev/null; }
 if ! alive server; then
   python3 tools/replay_repair.py --quiet 2>/dev/null   # recordings left half-saved by a server that was killed: pack them again
   nohup python3 launcher/mc.py server > run/logs/server.out 2>&1 & echo $! > run/server.pid

@@ -52,6 +52,14 @@ def step_in(x, y, z):
     return False
 
 
+def cap_cell(fx, fy, fz):
+    """The cell to cap is the one straight above the player's own head, not the one above the column
+    we started digging from. The player drifts a block or two while stepping into the shaft: at the
+    trench shelter (2026-11-27 06:26) it started at (80,112,-35), ended standing at (80,110,-35.41),
+    and the old code tried to cap (80,111,-36) — the player's own cell — so the hole stayed open."""
+    return fx, fy + 2, fz
+
+
 def cap_item(o):
     for want in CAPS:
         for i in o["self"].get("inventory", []):
@@ -96,12 +104,15 @@ def main(force):
     if not item:
         print("no block to cap with; staying in the hole (mobs can't get in, arrows can)")
         return 1
-    r = act({"type": "place", "x": x, "y": y - 1, "z": z, "item": item, "wait": 60})
-    print("cap:", r.get("observation", {}).get("control", {}).get("last_result") or r.get("result"))
+    fx, fy, fz = feet(obs())
+    cx, cy, cz = cap_cell(fx, fy, fz)
+    r = act({"type": "place", "x": cx, "y": cy, "z": cz, "item": item, "wait": 60})
+    msg = r.get("observation", {}).get("control", {}).get("last_result") or r.get("result") or ""
+    print(f"cap at {cx},{cy},{cz}:", msg)
     o = obs()
     above = call("/sonar")["text"].splitlines()[-1].strip()
     print(f"above me: {above}")
-    if "ceiling" in above:
+    if "ceiling" in above or "isn't empty" in str(msg):
         act({"type": "note", "text": f"shelter: 3 blocks down at {x},{y},{z}, capped with {item}"})
         return 0
     print("cap does not read as a ceiling; still in the hole")
