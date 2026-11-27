@@ -9,6 +9,7 @@ HERE = os.path.dirname(__file__)
 sys.path.insert(0, os.path.join(HERE, ".."))
 sys.path.insert(0, os.path.join(HERE, "..", "..", "agent"))
 
+import safety  # noqa: E402
 from safety import HOSTILE_METRES, LOW_HP, hostiles, stop_reason  # noqa: E402
 import shelter  # noqa: E402
 
@@ -165,3 +166,59 @@ def test_a_drowned_on_dry_land_does_not_stop_ordinary_work():
     o = {"self": {"health": 20, "in_water": False},
          "entities": [{"id": 9, "type": "drowned", "dist": 19.0}]}
     assert stop_reason(o) is None
+
+
+def test_the_best_tool_is_the_one_highest_in_the_order():
+    o = {"self": {"inventory": [{"slot": 2, "item": "wooden_pickaxe"},
+                                {"slot": 9, "item": "iron_pickaxe"},
+                                {"slot": 11, "item": "stone_pickaxe"}]}}
+    assert safety.best_tool(o)["item"] == "iron_pickaxe"
+
+
+def test_holding_a_tool_moves_it_to_the_hotbar_first():
+    o = {"self": {"inventory": [{"slot": 13, "item": "stone_pickaxe"}]}}
+    sent = []
+
+    def act(q):
+        sent.append(q)
+        return {"result": "ok"}
+
+    assert safety.hold_tool(act, o) == 0
+    assert sent[0] == {"type": "to_hotbar", "slot": 13, "hotbar": 0, "wait": 20}
+    assert sent[1] == {"type": "hotbar", "slot": 0, "wait": 20}
+
+
+def test_a_tool_already_in_the_hotbar_only_needs_selecting():
+    o = {"self": {"inventory": [{"slot": 3, "item": "wooden_pickaxe"}]}}
+    sent = []
+    safety.hold_tool(lambda q: sent.append(q) or {"result": "ok"}, o)
+    assert sent == [{"type": "hotbar", "slot": 3, "wait": 20}]
+
+
+def test_no_tool_at_all_says_so_instead_of_pretending():
+    assert safety.hold_tool(lambda q: {"result": "ok"}, {"self": {"inventory": []}}) is None
+
+
+def test_a_nearly_broken_tool_is_passed_over_for_a_whole_one():
+    o = {"self": {"inventory": [
+        {"slot": 0, "item": "stone_pickaxe", "durability_pct": 3},
+        {"slot": 9, "item": "wooden_pickaxe", "durability_pct": 89}]}}
+    assert safety.best_tool(o)["item"] == "wooden_pickaxe"
+
+
+def test_when_every_tool_is_worn_the_best_one_is_still_better_than_nothing():
+    o = {"self": {"inventory": [{"slot": 4, "item": "iron_pickaxe", "durability_pct": 2}]}}
+    assert safety.best_tool(o)["item"] == "iron_pickaxe"
+
+
+def test_a_screen_left_open_is_closed_before_the_dig():
+    o = {"self": {"open_screen": "Crafting"}}
+    sent = []
+    assert safety.close_screen(lambda q: sent.append(q) or {"result": "ok"}, o) is True
+    assert sent and sent[0]["type"] == "close"
+
+
+def test_no_screen_means_no_extra_action():
+    sent = []
+    assert safety.close_screen(lambda q: sent.append(q), {"self": {}}) is False
+    assert sent == []

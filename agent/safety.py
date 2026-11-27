@@ -69,7 +69,7 @@ def res_text(res):
     return str(res or "")
 
 
-def stop_reason(o, res="", start_hp=None, within=HOSTILE_METRES):
+def stop_reason(o, res="", start_hp=None, within=HOSTILE_METRES, min_hp=LOW_HP):
     """Why the script must stop and give control back (a human sentence), or None to carry on."""
     me = o.get("self", {})
     hp = me.get("health")
@@ -94,7 +94,7 @@ def stop_reason(o, res="", start_hp=None, within=HOSTILE_METRES):
     if me.get("in_water") and hp is not None and hp <= 8:
         return f"HP {hp} and in water — swim to land; the sea is not a place to be hurt in"
     if hp is not None:
-        if hp <= LOW_HP:
+        if hp <= min_hp:
             return f"HP {hp} is too low to work on — eat or save myself first"
         if start_hp is not None and hp < start_hp:
             return f"lost HP ({start_hp} -> {hp}) — something got me"
@@ -102,7 +102,7 @@ def stop_reason(o, res="", start_hp=None, within=HOSTILE_METRES):
         return f"took damage: {text}"
     for bad in ("lava", "refused", "won't", "stuck", "blocked", "died", "couldn't dig"):
         if bad in r:
-            return res
+            return text.strip() or "something went wrong"  # never hand back the response dict
     close = hostiles(o, within)
     if close:
         return "hostiles near: " + describe(close)
@@ -136,3 +136,73 @@ def near_water(o):
     water_seen = any((blk.get("block") or "") in ("water", "flowing_water")
                      for blk in o.get("blocks_in_view", []))
     return water_biome and water_seen
+
+
+# ---------------------------------------------------------------------------------------------------
+# The tool in the hand, not in the bag.
+#
+# Learned the hard way (a whole iron trip): a pickaxe that sits in the inventory mines nothing. The
+# staircase just answers "nothing in my hotbar can mine stone — needs a better tool", and stone dug
+# by hand gives no drops. `hc tohotbar INV HOTBAR` + `hc slot N` is the pair that fixes it, and the
+# pair fails silently when the hotbar slot already holds something, so always re-read `selected_slot`.
+
+TOOL_ORDER = ("netherite_pickaxe", "diamond_pickaxe", "iron_pickaxe", "stone_pickaxe",
+              "golden_pickaxe", "wooden_pickaxe")
+
+
+MIN_USES = 15  # below this a tool is about to break mid-shaft ("4 uses left by the bar, no spare")
+
+
+def best_tool(o, kinds=TOOL_ORDER, min_uses=MIN_USES):
+    """The best *usable* tool of `kinds` in the inventory, or None. `kinds` is a preference order.
+
+    Durability matters: a stone pickaxe at 3% digs four blocks and then the staircase answers
+    "tool nearly broken (4 uses left by the bar, no spare)" — better to take the wooden one that
+    still has 89% of its life.
+    """
+    best = None
+    for i in o.get("self", {}).get("inventory", []):
+        name = i.get("item")
+        if name in kinds and (i.get("durability_pct") or 100) >= min_uses:
+            if best is None or kinds.index(name) < kinds.index(best.get("item")):
+                best = i
+    if best is not None:
+        return best
+    # nothing with enough life left: fall back to whatever is there rather than mine by hand
+    have = {i.get("item"): i for i in o.get("self", {}).get("inventory", [])}
+    for name in kinds:
+        if name in have:
+            return have[name]
+    return None
+
+
+def hold_tool(act, o, kinds=TOOL_ORDER, hotbar=0):
+    """Put the best tool of `kinds` in the hand. Returns the hotbar slot, or None if we have none.
+
+    `act` is a callable that posts one action dict and returns the response (scripts pass their own,
+    so this works with `agent/shelter.py`'s and `agent/descend.py`'s small clients alike).
+    """
+    stack = best_tool(o, kinds)
+    if stack is None:
+        return None
+    slot = stack.get("slot")
+    if slot is None:
+        return None
+    if slot > 8:
+        act({"type": "to_hotbar", "slot": slot, "hotbar": hotbar, "wait": 20})
+        slot = hotbar
+    act({"type": "hotbar", "slot": slot, "wait": 20})
+    return slot
+
+
+def screen_open(o):
+    """True when a container or crafting screen is open — in that state every world action just times out."""
+    return bool((o.get("self") or {}).get("open_screen"))
+
+
+def close_screen(act, o):
+    """Press Escape if a screen is open (a human does this before digging). Returns True if it did."""
+    if not screen_open(o):
+        return False
+    act({"type": "close", "wait": 50, "resume": True})
+    return True

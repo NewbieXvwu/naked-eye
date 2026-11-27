@@ -17,7 +17,7 @@ import sys
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from safety import stop_reason, near_water, res_text  # noqa: E402
+from safety import stop_reason, near_water, res_text, hold_tool, close_screen  # noqa: E402
 
 API = "http://127.0.0.1:7070"
 DEFAULT_WANT = ("iron_ore", "deepslate_iron_ore", "coal_ore", "deepslate_coal_ore",
@@ -97,6 +97,11 @@ def main(argv):
                 return 0 if done else 3
         b = cands[0]
         cell = tuple(b["nearest"])
+        # A pickaxe in the bag mines nothing (the whole 2026-11-27 iron trip): hold it first.
+        close_screen(act, o)
+        if hold_tool(act, o) is None:
+            print("no pickaxe in the inventory — nothing to mine with")
+            return 2
         if b.get("dist", 99) > 24:
             print(f"nearest {b['block']} is {b.get('dist'):.0f} m away — walking to it")
         r = act({"type": "go", "near": True, "x": cell[0], "y": cell[1], "z": cell[2]}, timeout=600)

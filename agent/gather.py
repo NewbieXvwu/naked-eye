@@ -7,7 +7,7 @@ given type within reach, then walking over visible drops. Uses only the honest A
 import json, math, os, sys, urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from safety import stop_reason  # noqa: E402  the rules every macro shares (see agent/safety.py)
+from safety import stop_reason, LOW_HP  # noqa: E402  the rules every macro shares (see agent/safety.py)
 
 API = "http://127.0.0.1:7070"
 def get(p):
@@ -22,14 +22,14 @@ def act(o):
 def count(obs, item):
     return sum(i["count"] for i in obs["self"]["inventory"] if item in i["item"])
 
-def main(block, item, want, max_steps=30):
+def main(block, item, want, max_steps=30, floor=LOW_HP):
     unreachable = set()   # drops I already failed to walk to (stuck in leaves, on a ledge...): don't loop on them
     start_hp = get("/observe")["self"].get("health")
     for step in range(max_steps):
         o = get("/observe")
         # Death #3: this loop kept chopping while a zombie hit the player from 18 HP to 8. Chopping is
         # never worth being hit for: hand back to the brain, which can fight, flee or dig in.
-        why = stop_reason(o, start_hp=start_hp)
+        why = stop_reason(o, start_hp=start_hp, min_hp=floor)
         if why:
             print(f"⏸ stopped: {why}")
             return 3
@@ -73,5 +73,11 @@ def main(block, item, want, max_steps=30):
         print(f"step {step}: {r['observation']['control']['last_result']}")
     print("ran out of steps")
 
+def _floor(argv):
+    """--min-hp N: the HP floor. With no food in the world, a hurt human still chops wood."""
+    if "--min-hp" in argv: return int(argv[argv.index("--min-hp") + 1])
+    return LOW_HP
+
+
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2], int(sys.argv[3]))
+    main(sys.argv[1], sys.argv[2], int(sys.argv[3]), floor=_floor(sys.argv))
