@@ -20,7 +20,8 @@ import glob, json, os, shutil, subprocess, sys, threading, time, urllib.request,
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
-CTRL, API, DEBUG, RPORT = 7095, 7090, 7091, 25599
+import ports as _ports
+_P = _ports.get(); CTRL, API, DEBUG, RPORT = _P["review_ctrl"], _P["review_api"], _P["review_debug"], _P["review_game"]
 STATE = os.path.join(ROOT, "run", "review.json")
 
 

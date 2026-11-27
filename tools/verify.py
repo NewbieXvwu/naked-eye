@@ -5,16 +5,18 @@ import os, json, re, sys, time, urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 from rcon import run as rcon
+import ports as _ports
+_P = _ports.get(); A = f"http://127.0.0.1:{_P['api']}"; D = f"http://127.0.0.1:{_P['debug']}"
 
 def get(url):
     with urllib.request.urlopen(url, timeout=30) as r: return json.load(r)
 def post(obj):
-    req = urllib.request.Request("http://127.0.0.1:7070/act", data=json.dumps(obj).encode(), method="POST")
+    req = urllib.request.Request(A + "/act", data=json.dumps(obj).encode(), method="POST")
     with urllib.request.urlopen(req, timeout=60) as r: return json.load(r)
 def settle(ticks=12): post({"type": "wait", "wait": ticks})
-def honest(): return get("http://127.0.0.1:7070/observe?cursor=999999999")
-def honest_events(c): return get(f"http://127.0.0.1:7070/observe?cursor={c}")["events"]
-def raw(): return get("http://127.0.0.1:7071/debug/raw")
+def honest(): return get(A + "/observe?cursor=999999999")
+def honest_events(c): return get(f"{A}/observe?cursor={c}")["events"]
+def raw(): return get(D + "/debug/raw")
 def seen(o, t): return [e for e in o["entities"] if e["type"] == t]
 def truth(r, t): return [e for e in r["all_entities_client_knows"] if e["type"] == t]
 
@@ -27,7 +29,7 @@ def arena():
     # a really buried ore needs rock all around it (the arena floats in the sky: the old T3 "buried" diamond was
     # visible from below, and an agent that once fell past it remembered it), and the agent's memory of the
     # arena from earlier runs must go
-    get("http://127.0.0.1:7071/debug/forget?box=-1,194,-1,31,216,35")
+    get(D + "/debug/forget?box=-1,194,-1,31,216,35")
     # lift the agent out of the way before pouring stone (it once suffocated inside a freshly filled hall), top up HP
     rcon(["forceload add 0 0 30 34", "effect give Agent resistance 6 255 true", "effect give Agent slow_falling 6 0 true", "tp Agent 15.5 225 17.5", "effect give Agent instant_health 1 10 true", "kill @e[type=!player]", "fill 0 194 0 30 198 34 stone", "fill 0 199 0 30 199 34 stone", "fill 0 200 0 30 215 34 air",
           "time set day", "gamerule advance_time false", "gamerule spawn_mobs false", "weather clear"])
@@ -35,9 +37,9 @@ def arena():
 def look(x, y, z): post({"type": "look_at", "x": x, "y": y, "z": z, "wait": 15})
 
 # the tests teleport the agent and borrow two hotbar slots; remember where it was and what it held, and put it back
-if get("http://127.0.0.1:7070/observe")["self"].get("dead"):   # a dead agent fails every test for the wrong reason
+if get(A + "/observe")["self"].get("dead"):   # a dead agent fails every test for the wrong reason
     post({"type": "respawn"}); time.sleep(3)
-_start = get("http://127.0.0.1:7070/observe")["self"]
+_start = get(A + "/observe")["self"]
 post({"type": "pause_policy", "allow": False})   # the tests hurt/scare the agent on purpose; don't freeze the world
 _held = {i["slot"]: i for i in _start["inventory"] if i["slot"] in (0, 1)}
 
@@ -70,8 +72,8 @@ check("T2 golem: cracks visible, health never leaks", all(l is not None for _, l
 rcon(["kill @e[type=iron_golem]", "setblock 22 197 20 diamond_ore", "setblock 6 199 20 diamond_ore"])
 look(6.5, 199.5, 20.5); settle(40)
 r = raw()
-kb = get("http://127.0.0.1:7071/debug/known?x=22&y=197&z=20").get("known")
-ke = get("http://127.0.0.1:7071/debug/known?x=6&y=199&z=20").get("known")
+kb = get(D + "/debug/known?x=22&y=197&z=20").get("known")
+ke = get(D + "/debug/known?x=6&y=199&z=20").get("known")
 check("T3 buried diamond never enters memory, exposed one does", kb is None and ke == "diamond_ore",
       f"memory at buried spot: {kb}; at exposed spot: {ke}; all valuables in loaded chunks: {r['valuables_in_loaded_chunks_r32']}, agent has seen: {r['valuables_agent_has_actually_seen']}")
 
@@ -89,7 +91,7 @@ check("T4 zombie in a pitch-dark room is invisible until a torch is lit", dark a
 # ---------------------------------------------------------------- T5 hearing what you can't see
 rcon(["kill @e[type=zombie]", "fill 11 200 20 19 205 28 air", "fill 10 200 12 20 203 12 stone",
       "summon zombie 15 200 16 {NoAI:1b,PersistenceRequired:1b,Silent:1b}", "tp Agent 15.5 200 4.5 facing 15.5 201 20"])
-settle(15); c0 = get("http://127.0.0.1:7070/observe")["cursor"]
+settle(15); c0 = get(A + "/observe")["cursor"]
 rcon(["playsound minecraft:entity.zombie.ambient hostile Agent 15 200 16 1"]); settle(6)
 evs = [e for e in honest_events(c0) if e["kind"] == "sound"]
 check("T5 hear the zombie behind the wall (subtitle + direction) without seeing it",
@@ -119,7 +121,7 @@ print(f"\n{passed}/{len(R)} passed")
 json.dump([{"test": n, "passed": p, "detail": d} for n, p, d in R], open(os.path.join(ROOT, "run", "verify_report.json"), "w"), ensure_ascii=False, indent=1)
 
 # ======================================================================= 26.3 additions
-def gamma(v): return get(f"http://127.0.0.1:7071/debug/gamma?v={v}")
+def gamma(v): return get(f"{D}/debug/gamma?v={v}")
 def act_go(x, y, z, wait=900):
     r = post({"type": "go", "x": x, "y": y, "z": z, "wait": wait})
     return r["observation"]["control"]["last_result"], r["observation"]["self"]["pos"]
@@ -158,7 +160,7 @@ check("T10 blaze in the dark is fully visible (renderer lights it full-bright)",
 
 # ---------------------------------------------------------------- T11 honest Baritone cannot use a staircase it hasn't seen
 arena()
-curl_forget = get("http://127.0.0.1:7071/debug/forget")
+curl_forget = get(D + "/debug/forget")
 rcon(["fill 0 200 20 30 203 20 stone",                       # a wall across the arena
       "fill 12 200 24 18 203 30 stone",                       # a raised platform behind it (top at y=204)
       "fill 13 204 25 17 204 29 gold_block",
@@ -166,14 +168,14 @@ rcon(["fill 0 200 20 30 203 20 stone",                       # a wall across the
       "fill 14 203 24 16 203 24 stone",                       # staircase hidden behind the wall
       "fill 14 201 21 16 205 21 air", "fill 14 202 22 16 205 22 air", "fill 14 203 23 16 205 23 air",
       "tp Agent 15.5 200 10.5 facing 15.5 204 27"])
-get("http://127.0.0.1:7071/debug/baritone?break=0&place=0")   # walking only: test route knowledge, not building
+get(D + "/debug/baritone?break=0&place=0")   # walking only: test route knowledge, not building
 settle(30)
 post({"type": "look_around", "pitch": 5, "wait": 160})
 r1, p1 = act_go(15, 205, 27, 600)
 rcon(["fill 13 200 20 17 203 20 air"])                        # open a doorway: the stairs become visible
 post({"type": "look_at", "x": 15.5, "y": 202, "z": 22, "wait": 40}); settle(20)
 r2, p2 = act_go(15, 205, 27, 900)
-get("http://127.0.0.1:7071/debug/baritone?break=1&place=1")
+get(D + "/debug/baritone?break=1&place=1")
 check("T11 honest Baritone won't route via unseen stairs; once seen, it climbs them",
       "arrived" not in r1 and "arrived" in r2,
       f"before seeing stairs: '{r1}' at {p1}; after: '{r2}' at {p2}")
@@ -197,14 +199,14 @@ rcon(["fill 0 199 0 30 206 34 air", "fill 0 199 0 30 199 34 stone"])
 import subprocess, testcave
 X0, Y0, Z0 = testcave.X0, testcave.Y0, testcave.Z0
 testcave.build()
-get(f"http://127.0.0.1:7071/debug/forget?box={X0-3},{Y0-3},{Z0-3},{X0+43},{Y0+23},{Z0+35}")
-get("http://127.0.0.1:7071/debug/baritone?break=0&place=0")
+get(f"{D}/debug/forget?box={X0-3},{Y0-3},{Z0-3},{X0+43},{Y0+23},{Z0+35}")
+get(D + "/debug/baritone?break=0&place=0")
 rcon([f"tp Agent {X0+4.5} {Y0+14} {Z0+4.5} facing {X0+15} {Y0+14.5} {Z0+4}", "effect give Agent regeneration 60 4 true"]); settle(100)   # (3000 blocks away: let the chunks arrive)
 post({"type": "look_around", "pitch": 10, "wait": 160})
 post({"type": "mark", "name": "t13_entrance"})
 post({"type": "go", "x": X0+21, "y": Y0+14, "z": Z0+3, "wait": 1200})
 post({"type": "look_at", "x": X0+26.5, "y": Y0+9, "z": Z0+5.5, "wait": 30}); post({"type": "look_around", "pitch": 10, "wait": 160})
-ledge_txt = get("http://127.0.0.1:7070/places")["text"]
+ledge_txt = get(A + "/places")["text"]
 one_way = bool(re.search(r"drop ~?5 m to P\d+ — ONE WAY", ledge_txt)) and "NO WAY BACK" in ledge_txt
 # now wake up in the deepest room, knowing only what was seen from up there
 rcon([f"tp Agent {X0+4.5} {Y0+2} {Z0+26.5} facing {X0+4.5} {Y0+3} {Z0+22}"]); settle(20)
@@ -213,7 +215,7 @@ fw = subprocess.run([sys.executable, os.path.join(ROOT, "agent", "find_way.py"),
 pos = honest()["self"]["pos"]
 home = abs(pos[0] - (X0+4)) < 2.5 and abs(pos[2] - (Z0+4)) < 2.5 and abs(pos[1] - (Y0+14)) < 1
 rounds = fw.stdout.count("round ")
-get("http://127.0.0.1:7071/debug/baritone?break=1&place=1")
+get(D + "/debug/baritone?break=1&place=1")
 post({"type": "mark", "name": "t13_entrance", "remove": True})
 rcon([f"forceload remove {X0-16} {Z0-16} {X0+60} {Z0+50}"])
 check("T13 cave: graph flags the ledge drop as one-way; from the deepest room I find the way home by exploring openings",
@@ -243,7 +245,7 @@ rcon(["effect clear Agent", "effect give Agent instant_health 1 10 true"])
 time.sleep(1)
 rcon(["tp Agent 15.5 200 17.5 facing 15.5 200 20"])
 time.sleep(4)
-s = get("http://127.0.0.1:7070/observe")["self"]
+s = get(A + "/observe")["self"]
 watered = "passed" in "".join(rcon(["execute if block 15 200 17 water"]))
 check("T15 lava reflex: dropped in lava with a water bucket, it pours it and lives",
       s["health"] >= 14 and watered, f"HP {s['health']} after 4 s, water at my feet: {watered}")

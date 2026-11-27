@@ -458,7 +458,7 @@ public final class Api {
         for (var e : lvl.getEntities(p, p.getBoundingBox().inflate(4)))
             if (e instanceof net.minecraft.world.entity.monster.Enemy && Perception.anyPointVisible(lvl, p.getEyePosition(), e.getBoundingBox()))
                 c.add("a " + net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(e.getType()).getPath() + " right next to me");
-        if (c.isEmpty() && (p.fallDistance > 3 || Events.heardRecently("falls on a block", 3) || Events.heardRecently("Something trips", 3))) c.add("fell");
+        if (c.isEmpty() && (p.fallDistance > 3 || Events.heardRecently("falls on a block", 8) || Events.heardRecently("Something trips", 8))) c.add("fell");
         if (Events.heardRecently("Explosion", 4)) c.add("an explosion just went off nearby (a creeper?)");
         // the roundabout clues a player has: arrows/stingers stuck in your model (press E / F5 to see them),
         // the direction the screen tilts when hit, and which way the knockback shoved you

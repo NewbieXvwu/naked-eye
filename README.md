@@ -196,6 +196,12 @@ MARK entrance: 17 m west (behind-left), same level — reachable (P1)
 
 录像现在在录制时就跳过了冻结的时间（`RecordingClock`）：只是录像的时钟停走，冻结期间的包照录。每次想了多久记在服务器日志里，总和在录像元数据的 `accumulated_paused_time`。`hc speed auto` 会自动找出机器能稳住的最高倍速；这台 2 vCPU 的机器能到 5 倍，因为 Agent 客户端现在完全不绘制画面。
 
+## 一台机器多个实例；同一个世界多个 Agent（接口已留）
+
+- **各玩各的**：一份仓库副本就是一个实例。`tools/ports.py` 给每份副本分一个槽位，所有端口整体 `+100 × 槽位`，游戏文件共用 `~/.cache/naked-eye`。用法见 `PORTABLE.md`。
+- **同一个世界多 Agent**：`./add_agent.sh 名字` + `HC_AGENT=名字 tools/hc …`。服务端每秒重读一次 `agents.txt`，新名字自动算作 Agent，不当成观战者；录像会给它单独开一条。还没定的是**时间模型**：思考暂停冻结的是整个世界，所以眼下只要有第二个 Agent 在场，客户端就自动关掉暂停，世界按实时运行。可选的规则有三种：实时、任何人思考都冻结、回合制锁步。等真要比赛时再选。
+- 顺手修了一个 bug：摔伤时字幕里明明有"Something falls on a block"，原因却报"not obvious"。查找最近声音时，碰到不带 tick 的"⏸ PAUSED"条目就提前停下了。
+
 ## 这一版踩到的坑
 
 1. **26.3 的加载界面**：要等"玩家所在区块编译成 GPU 网格"才会关闭，超时后兜底放行。无头模式下网格永远不会生成，所以用 `LoadTrackerMixin` 直接放行。区块数据其实已经到了，只是缺 GPU 网格。
@@ -205,7 +211,7 @@ MARK entrance: 17 m west (behind-left), same level — reachable (P1)
 
 ## 文件
 
-- `setup.sh` / `start.sh` / `stop.sh` / `window.sh`：下载、启动、停止、开关游戏窗口。`launcher/mc.py` 是启动器，只用 Python 标准库。
+- `setup.sh` / `start.sh` / `stop.sh` / `window.sh` / `add_agent.sh`：下载、启动、停止、开关游戏窗口、往世界里再加一个 Agent。`tools/ports.py`：本副本的端口槽位。`launcher/mc.py` 是启动器，只用 Python 标准库。
 - `src/mod/`：客户端 mod（感知、动作、反射、暂停）；`src/pause-mod/`：服务端 mod（真暂停、附身观战）。改完用 `tools/build.sh` 编译，jar 会放进 `mods/`（需要 Java 25 和网络）。
 - `mods/`：编译好的三个 mod。其中 `baritone-honest.jar` 是改过的 Baritone（LGPL-3.0），源码在子模块 `src/baritone`，同时附了 `baritone-honest.patch`。许可证说明见 `THIRD_PARTY.md`。
 - `tools/hc`：Agent 的命令行；`tools/verify.py`：验收测试（实验者用）；`tools/rcon.py`：实验者的 RCON；`tools/replay_cut.py`：剪掉录像里的思考时间；`tools/make_packages.sh` / `make_drive_parts.sh`：打联网版、离线版和小分段。

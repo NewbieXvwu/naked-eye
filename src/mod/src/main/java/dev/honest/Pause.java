@@ -48,6 +48,15 @@ public final class Pause {
         LocalPlayer pl = mc.player;
         if (pl == null) return;
         float hp = pl.getHealth(); int air = pl.getAirSupply();
+        // Several agents in one world: there's one clock, and no rule yet for whose thinking may stop it, so the world
+        // runs in real time — no thinking pause, no alarm pause. (The time model for many agents is an open design.)
+        boolean multi = otherAgentHere(mc);
+        if (multi != multiAgent) {
+            multiAgent = multi;
+            Events.note("pause", multi ? "another agent is in this world: no pausing — the world runs in real time"
+                                       : "I'm the only agent again: thinking pause back on");
+        }
+        if (multi) { if (paused != null) resume("another agent is in this world"); speedGuard(mc); lastHp = hp; lastAir = air; return; }
         // joined (or restarted) into a world that is still frozen from an earlier pause: own it, so the next action resumes
         // someone else unfroze the world under my thinking-pause: let go of it, so the idle pause can freeze it again
         if ("idle".equals(pausedKind) && paused != null && mc.level != null && mc.level.tickRateManager().runsNormally()
@@ -120,6 +129,16 @@ public final class Pause {
             Events.note("pause", String.format(Locale.ROOT, "fast-forward %.0fx -> %dx: the world ran at %.0f tps but I only managed %.0f", want / 20, next / 20, want, got));
             IO.submit(() -> rcon("tick rate " + next));
         }
+    }
+
+    static boolean multiAgent;
+    /** another player in the world who isn't a spectator (watchers are spectators) */
+    static boolean otherAgentHere(Minecraft mc) {
+        var c = mc.getConnection(); var me = mc.player;
+        if (c == null || me == null) return false;
+        for (var info : c.getOnlinePlayers())
+            if (!info.getProfile().id().equals(me.getUUID()) && info.getGameMode() != net.minecraft.world.level.GameType.SPECTATOR) return true;
+        return false;
     }
 
     static String pausedKind = "manual"; static String pausedKindLast = ""; static int lastFirePause = -9999;

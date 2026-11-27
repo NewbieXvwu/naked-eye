@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""hc — the agent's command line. Talks ONLY to the honest API on :7070.
+"""hc — the agent's command line. Talks ONLY to the honest API (port 7070, or this copy's slot: tools/ports.py).
 
   hc obs                      what I perceive right now (+ new sounds/chat/task results)
   hc map [r]                  top-down sketch of what I remember seeing
@@ -40,7 +40,9 @@
 """
 import json, os, sys, urllib.request
 
-API = "http://127.0.0.1:7070"
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import ports as _ports
+# this copy's agent (tools/ports.py); with several agents in one world, HC_AGENT=NAME picks which one I am
+API = f"http://127.0.0.1:{_ports.agent_api(os.environ.get('HC_AGENT', 'Agent'))}"
 CUR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "run", ".hc_cursor"); os.makedirs(os.path.dirname(CUR), exist_ok=True)
 
 def get(path):

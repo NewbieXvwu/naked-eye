@@ -75,6 +75,9 @@ description: "Use when playing or developing Naked Eye (眼见为实), the naked
 - 26.x 里，客户端往熔炉里快速移动物品会失败（没有配方同步）。
 - 用 `/summon` 召唤的骷髅手里没有弓（跳过了自然生成时的初始化），测试时要手动给它配弓。
 - verify 里的 `arena()` 会把 agent 从 y225 带着缓降放下去：要先落地，再清掉药水效果。
+- 端口一律从 `tools/ports.py` 取（槽位 +100×N），不要在代码里写死 7070/25575；新工具也要这样。
+- 同一个世界里有两个以上 Agent 时，`Pause` 会自动关掉暂停（`otherAgentHere`：在线玩家里有非旁观者）。观战者都是旁观者，不算 Agent。
+- `Events.heardRecently` 往回翻事件时要跳过不带 tick 的条目（暂停提示之类），不能停在那里。
 - ServerReplay 的玩家录制器原本只让 Flashback 格式暂停；对 ReplayMod 格式来说，暂停只是停时钟、不丢包，所以服务端 mod 放开了这个限制（`RecordingClock`）：冻结期间照录，但不计时。`replay_cut.py` 只给更早的旧录像用。
 
 ## 4. 验尸流程（每次死亡后都要做）

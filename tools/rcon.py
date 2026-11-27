@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Experimenter-only RCON tool. NOT part of the agent's interface."""
-import socket, struct, sys
+import os, socket, struct, sys
 
 def _pkt(i, t, body):
     b = body.encode() + b"\x00\x00"
@@ -24,8 +24,10 @@ def password():
     except OSError: pass
     return "honest"
 
-def run(cmds, host="127.0.0.1", port=25575, pw=None):
+def run(cmds, host="127.0.0.1", port=None, pw=None):
     pw = pw or password()
+    if port is None:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import ports; port = ports.get()["rcon"]
     out = []
     with socket.create_connection((host, port)) as s:
         s.sendall(_pkt(1, 3, pw)); _recv(s)

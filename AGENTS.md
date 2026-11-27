@@ -35,6 +35,10 @@ Needs Python 3.8+, ~4 GB RAM and ~3 GB of disk. The game window is for humans wa
   up with (server and client together) and uses it. It's fair: you and the world speed up together, the world is
   frozen while you think anyway, and alarms and reflexes are checked every game tick at any speed. If the machine
   ever falls behind, the game drops back to 1× by itself — run `tools/hc speed auto` again later.
+- Several copies of this folder can run on one machine at once (each gets its own ports and world; `tools/hc`
+  finds its own). If you were told to share a world with other agents (`./add_agent.sh NAME`, then
+  `HC_AGENT=NAME tools/hc …`), there is **no thinking pause** while two or more agents are in it: the world runs in
+  real time, so act in short steps.
 - You may write your own scripts on top of `tools/hc` / the API (see `agent/` for examples).
 - **Narrate as you play**, like subtitles: every few actions, `tools/hc note "…"` — one short line on how it's
   going and what you'll do next ("night's coming, digging in under the oak", "creeper hissing behind me, backing off").

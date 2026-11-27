@@ -14,7 +14,10 @@ Supported: macOS (Apple Silicon and Intel) and Linux x86_64. Mojang ships no Lin
 import hashlib, json, os, platform, shutil, subprocess, sys, tarfile, urllib.request, uuid, zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CACHE = os.environ.get("HC_CACHE", os.path.join(ROOT, ".cache"))
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+import ports as _ports
+CACHE = _ports.cache_dir()   # shared by every copy on this machine (an offline package carries its own .cache)
+PORTS = _ports.get()
 RUN = os.path.join(ROOT, "run")
 MC, LOADER, JAVA_MAJOR = "26.3", "0.20.1", 25
 FABRIC_INSTALLER = "1.1.2"
@@ -214,6 +217,7 @@ def server():
     seed_dir(d, os.path.join(sv, "firstrun"))
     seed_dir(d, os.path.join(ROOT, "config", "server"))
     rcon_password(d)
+    set_ports(d)
     link_mods(os.path.join(d, "mods"), [m[0] for m in SERVER_MODS] + OUR_SERVER_MODS)
     # record the agents only, not the people watching them (the list lives in config/naked-eye/agents.txt)
     try:
@@ -225,6 +229,14 @@ def server():
         print("[server] couldn't set the replay player list:", e, flush=True)
     j = java_bin(); os.chdir(d)
     os.execv(j, [j, f"-Xmx{os.environ.get('HONEST_SERVER_XMX', '2G')}", "-jar", "fabric-server-launch.jar", "nogui"])
+
+
+def set_ports(server_dir):
+    """this copy's slot: its own game and RCON ports (see tools/ports.py)"""
+    p = os.path.join(server_dir, "server.properties")
+    want = {"server-port": PORTS["game"], "query.port": PORTS["game"], "rcon.port": PORTS["rcon"]}
+    lines = [f"{l.split('=', 1)[0]}={want[l.split('=', 1)[0]]}" if l.split("=", 1)[0] in want else l for l in open(p).read().splitlines()]
+    open(p, "w").write("\n".join(lines) + "\n")
 
 
 def rcon_password(server_dir):
@@ -264,7 +276,8 @@ def client():
     jvm = prof["arguments"]["jvm"] + [f"-Xmx{os.environ.get('HONEST_XMX', '2G')}",
            "-Dhonest.headless=" + os.environ.get("HONEST_HEADLESS", "true" if no_screen(osn) else "false"),
            "-Dhonest.show=" + ("true" if os.environ.get("HONEST_SHOW") == "1" else "false"),
-           "-Dhonest.port=" + os.environ.get("HONEST_PORT", "7070"),
+           "-Dhonest.port=" + os.environ.get("HONEST_PORT", str(PORTS["api"])),
+           "-Dhonest.rcon.port=" + str(PORTS["rcon"]),
            "-Dhonest.pause=" + ("false" if os.environ.get("HONEST_PAUSE") == "0" or os.environ.get("HONEST_REVIEW") else "true"),
            "-Dhonest.review=" + ("true" if os.environ.get("HONEST_REVIEW") else "false"),
            "-Dhonest.review.flightlog=" + os.environ.get("HONEST_REVIEW_FLIGHTLOG", ""),
@@ -272,7 +285,7 @@ def client():
            "-Dhonest.debug=" + ("false" if os.environ.get("HONEST_DEBUG") == "0" else "true")] + os.environ.get("HONEST_JAVA_OPTS", "").split() + jvm
     game = ["--username", name, "--version", MC, "--gameDir", gd, "--assetsDir", os.path.join(CACHE, "mc", "assets"),
             "--assetIndex", v["assetIndex"]["id"], "--uuid", str(uuid.uuid3(uuid.NAMESPACE_DNS, "Agent")), "--accessToken", "0",
-            "--versionType", "release", "--quickPlayMultiplayer", os.environ.get("HONEST_SERVER", "127.0.0.1:25565"), "--width", "128" if no_screen(osn) else "1280", "--height", "72" if no_screen(osn) else "720"]
+            "--versionType", "release", "--quickPlayMultiplayer", os.environ.get("HONEST_SERVER", f"127.0.0.1:{PORTS['game']}"), "--width", "128" if no_screen(osn) else "1280", "--height", "72" if no_screen(osn) else "720"]
     # (no screen: nothing is drawn, but every frame still copies the picture to the window — on a software renderer
     #  that copy was ~40% of the client's CPU at 1280x720. Same 16:9, so the field of view the eyes use is unchanged)
     env = dict(os.environ)

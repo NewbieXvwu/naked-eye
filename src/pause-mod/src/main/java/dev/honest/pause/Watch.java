@@ -50,14 +50,7 @@ public final class Watch implements ModInitializer {
 
     @Override
     public void onInitialize() {
-        try {
-            Path f = Path.of("config", "naked-eye", "agents.txt");
-            if (Files.exists(f)) {
-                Set<String> s = new LinkedHashSet<>();
-                for (String l : Files.readAllLines(f)) { l = l.strip(); if (!l.isEmpty() && !l.startsWith("#")) s.add(l); }
-                if (!s.isEmpty()) agents = s;
-            }
-        } catch (Exception ignored) {}
+        loadAgents();
 
         // the agents' commentary channel (registered on both sides: this mod is on the client too)
         net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry.serverboundPlay().register(Note.TYPE, Note.CODEC);
@@ -88,6 +81,21 @@ public final class Watch implements ModInitializer {
                         .executes(c -> watch(c.getSource().getPlayerOrException(), StringArgumentType.getString(c, "agent"))))));
     }
 
+    static long agentsStamp = -1;
+    /** the agents' names (config/naked-eye/agents.txt), re-read whenever the file changes (./add_agent.sh adds one) */
+    static void loadAgents() {
+        try {
+            Path f = Path.of("config", "naked-eye", "agents.txt");
+            if (!Files.exists(f)) return;
+            long stamp = Files.getLastModifiedTime(f).toMillis();
+            if (stamp == agentsStamp) return;
+            agentsStamp = stamp;
+            Set<String> s = new LinkedHashSet<>();
+            for (String l : Files.readAllLines(f)) { l = l.strip(); if (!l.isEmpty() && !l.startsWith("#")) s.add(l); }
+            if (!s.isEmpty()) agents = s;
+        } catch (Exception ignored) {}
+    }
+
     /** /watch = the next agent, /watch NAME = that one, /watch free = let go */
     static int watch(ServerPlayer p, String name) {
         if (isAgent(p)) return 0;
@@ -108,6 +116,7 @@ public final class Watch implements ModInitializer {
     }
 
     static void tick(MinecraftServer server) {
+        if (server.getTickCount() % 20 == 0) loadAgents();
         for (ServerPlayer p : server.getPlayerList().getPlayers()) {
             if (isAgent(p)) continue;
             if (p.gameMode() != GameType.SPECTATOR) p.setGameMode(GameType.SPECTATOR);
