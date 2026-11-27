@@ -203,6 +203,10 @@ MARK entrance: 17 m west (behind-left), same level — reachable (P1)
 - **聊天和分队**（`Talk.java`、`Chat.java`、`Teams.java`）：公屏、队内（`/teammsg`）、私信（`/msg`）都是原版机制，分队来自 `teams.txt`。收到的消息直接读原版的聊天类型，知道是谁说的、哪个频道、发给谁，不解析文字。聊天默认免费：在冻结的世界里也能随便聊，好看 AI 们为一个目标商量起来。打开 `chat_takes_time` 后，按连麦语速算时间，消息说完才送达。新消息会唤醒正在等待的 Agent。所有聊天都存进 `run/server/chat/*.jsonl`（`tools/chat.py`），观战者能看到队内消息和私信，Agent 被禁止通过游戏以外的方式交流。
 - **看见别的玩家**：名牌按原版规则显示，64 格内可以透墙、在黑暗里也能看到，对方潜行时就看不到了；观察结果里还有 Tab 名单和自己的队伍。死亡画面上的 Agent 也算"在想"，世界会等它决定是否重生。
 - 修了一个 bug：一个 Agent 如果曾被当成观战者（比如它在线时被暂时移出名单），旁观者模式会存进它的存档，之后就一直是旁观者。现在 Agent 一律改回生存模式。
+- **录像**：服务端给每个 Agent 各录一份，放在 `recordings/players/名字/`，录的是它自己周围的世界（别的 Agent 走进视距内也会被录进去）。修了三个问题：
+  1. **关服时截断录像**，单 Agent 也中招：一个 Agent 退出时，它的录像在后台线程里打包成 .mcpr，而 stop.sh 紧接着就关服，JVM 一退出，打包就被打断了。当天的录像有一半因此损坏。现在 stop.sh 等所有录像打包完再关服。数据其实都还在 `.tmp` 目录里，`tools/replay_repair.py` 能把它们重新打包，start.sh 每次启动前也会自动修一遍。当天损坏的 25 份都已救回，抽一份从头放到尾检查过。
+  2. **重连后不再录制**：中途加进来的 Agent 一旦掉线重连，就不录了。现在由服务端负责：每个 Agent 一进服就开录。
+  3. **复盘只认第一个 Agent**：`review.py` 现在会按录像所属的 Agent 去找它自己的飞行日志，`review.py open Bob` 打开 Bob 最新的录像。
 - **伤因不再靠猜**（`Hurt.java`）：以前是拿字幕字符串（"falls on a block""Explosion"）加上 fallDistance 拼出来的，又脆又不准。现在直接读服务器每次伤害都会发给客户端的伤害事件（`ClientboundDamageEventPacket`，原版靠它决定屏幕往哪边歪），里面有伤害类型、攻击者和来源位置。对 Agent 的规则：伤害类型直接告诉它（人总知道自己是摔的、烧的还是饿的，死亡信息也会写明）；攻击者只有这一刻在画面上才说出名字，判断标准和 `obs` 是同一套。看不见的分三种说：off-screen（转头就能看到）、right in front of me that I can't make out（就在画面里，但太暗、被挡住或者隐身），以及远程攻击的 not in view（箭从哪里来，不等于射手站在哪里）；方向只给八个方位之一，相当于屏幕歪的那一下。测试见 T17。
 - 同时堵住了一个旧漏洞：原来的"a zombie right next to me"只检查有没有东西挡着，不检查视野，所以背后的怪也会被报出来。
 
@@ -218,7 +222,7 @@ MARK entrance: 17 m west (behind-left), same level — reachable (P1)
 - `setup.sh` / `start.sh` / `stop.sh` / `window.sh` / `add_agent.sh`：下载、启动、停止、开关游戏窗口、往世界里再加一个 Agent。`tools/ports.py`：本副本的端口槽位。`launcher/mc.py` 是启动器，只用 Python 标准库。
 - `src/mod/`：客户端 mod（感知、动作、反射、暂停）；`src/pause-mod/`：服务端 mod（真暂停、附身观战）。改完用 `tools/build.sh` 编译，jar 会放进 `mods/`（需要 Java 25 和网络）。
 - `mods/`：编译好的三个 mod。其中 `baritone-honest.jar` 是改过的 Baritone（LGPL-3.0），源码在子模块 `src/baritone`，同时附了 `baritone-honest.patch`。许可证说明见 `THIRD_PARTY.md`。
-- `tools/hc`：Agent 的命令行；`tools/verify.py`：验收测试（实验者用）；`tools/verify_multi.py`：多 Agent 的测试（时钟、聊天、名牌、死亡；会临时再启动一个客户端）；`tools/chat.py`：读 Agent 之间的聊天；`tools/rcon.py`：实验者的 RCON；`tools/replay_cut.py`：剪掉录像里的思考时间；`tools/make_packages.sh` / `make_drive_parts.sh`：打联网版、离线版和小分段。
+- `tools/hc`：Agent 的命令行；`tools/verify.py`：验收测试（实验者用）；`tools/verify_multi.py`：多 Agent 的测试（时钟、聊天、名牌、死亡；会临时再启动一个客户端）；`tools/chat.py`：读 Agent 之间的聊天；`tools/replay_repair.py`：重建没存完的录像；`tools/rcon.py`：实验者的 RCON；`tools/replay_cut.py`：剪掉录像里的思考时间；`tools/make_packages.sh` / `make_drive_parts.sh`：打联网版、离线版和小分段。
 - `agent/`：Agent 自己写的脚本，只调用诚实 API；`agent/claude-scripts/`：Claude 玩的时候顺手写的小工具。
 - `config/`：首次运行时用到的模板（客户端选项、服务器配置、Agent 名单 `naked-eye/agents.txt`）。
 - `AGENTS.md`：给任何一家 AI 看的说明和规则；`.claude/skills/naked-eye-playbook/`：Claude 的打法手册。

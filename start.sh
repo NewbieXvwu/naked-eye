@@ -11,6 +11,7 @@ alive() { [ -f "run/$1.pid" ] && kill -0 "$(cat run/$1.pid)" 2>/dev/null; }
 # up = the API answers AND I am standing in the world (not still on the loading screen)
 up() { python3 -c "import urllib.request,json,sys; o=json.load(urllib.request.urlopen('http://127.0.0.1:$API/observe', timeout=5)); sys.exit(0 if 'self' in o and 'open_screen' not in o['self'] else 1)" 2>/dev/null; }
 if ! alive server; then
+  python3 tools/replay_repair.py --quiet 2>/dev/null   # recordings left half-saved by a server that was killed: pack them again
   nohup python3 launcher/mc.py server > run/logs/server.out 2>&1 & echo $! > run/server.pid
   echo "server starting (first start generates the world: a minute or two) ..."
   # ready = RCON answers (it opens after "Done"; an old latest.log from the last run would lie)

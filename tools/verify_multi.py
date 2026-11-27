@@ -16,6 +16,11 @@ def post(port, obj, timeout=60):
     with urllib.request.urlopen(req, timeout=timeout) as r: return json.load(r)
 def gametime(): return int(__import__("re").findall(r"\d+", "".join(rcon(["time query gametime"])))[-1])
 def z(name): return float(__import__("re").findall(r"(-?[\d.]+)d", "".join(rcon([f"data get entity {name} Pos[2]"])))[-1])
+def both(ticks, **kw):
+    """let the world run a little with both agents acting. (Two waits side by side: whichever ends first starts thinking
+    and holds the other up — so the Agent's is left hanging in the background, superseded by its next action.)"""
+    threading.Thread(target=post, args=(A, dict({"type": "wait", "wait": ticks}, **kw), None), daemon=True).start()
+    time.sleep(0.2); post(B, dict({"type": "wait", "wait": ticks}, **kw))
 R = []
 def check(name, ok, detail): R.append(ok); print(("PASS " if ok else "FAIL ") + name + " — " + detail)
 
@@ -23,8 +28,7 @@ subprocess.run([os.path.join(ROOT, "add_agent.sh"), "Tester2"], check=True)
 try:
     rcon(["forceload add 100 100 120 120", "fill 100 199 100 120 199 120 stone", "fill 100 200 100 120 203 120 air",
           "tp Agent 105.5 200 110.5", "tp Tester2 115.5 200 100.5 0 0", "time set day"])
-    t = threading.Thread(target=post, args=(B, {"type": "wait", "wait": 10, "resume": True})); t.start()
-    post(A, {"type": "wait", "wait": 10, "resume": True}); t.join(); time.sleep(1)
+    both(10, resume=True); time.sleep(1)
 
     # Tester2 walks 40 ticks; Agent thinks, acts 20, thinks, acts until Tester2 is done
     out = {}
@@ -56,7 +60,7 @@ try:
           g7 - g6 >= 20 and told, f"+{g7 - g6} ticks in 2 s; Tester2 told: {told}")
     os.remove(f)
     # release both (Tester2's thinking ran out; give the world back to the rules)
-    t = threading.Thread(target=post, args=(B, {"type": "wait", "wait": 3})); t.start(); post(A, {"type": "wait", "wait": 10}); t.join()
+    both(3)
 
     # ---------------------------------------------------------------- talking (free chat: the default)
     cfg = os.path.join(ROOT, "run", "server", "config", "naked-eye")
@@ -99,7 +103,7 @@ try:
 
     # ---------------------------------------------------------------- seeing other players
     rcon(["fill 109 200 103 111 203 108 stone", "tp Agent 105.5 200 105.5 facing 115.5 201 105.5", "tp Tester2 115.5 200 105.5"])
-    t = threading.Thread(target=post, args=(B, {"type": "wait", "wait": 10})); t.start(); post(A, {"type": "wait", "wait": 10}); t.join()
+    both(10)
     o = json.load(urllib.request.urlopen(f"http://127.0.0.1:{A}/observe"))
     tags = [e for e in o["entities"] if e.get("name") == "Tester2"]
     check("C12 another player's name tag shows through a wall (as in the game), with its team",

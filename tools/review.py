@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Review a played session: rebuild it from its recording and look at any moment through two pairs of eyes.
 
-    tools/review.py open [REPLAY.mcpr]   rebuild the newest (or that) recording: a replay server + a review client
+    tools/review.py open [REPLAY.mcpr | AGENT]   rebuild the newest recording (or that one, or that agent's newest):
+                                         a replay server + a review client
     tools/review.py status               where the review is (game time, playing or paused, where the agent stands)
     tools/review.py goto GAMETIME        run forward to that game time and pause there (forward only; reopen to go back)
     tools/review.py agent                what the agent could perceive at this moment (its own /observe, recomputed)
@@ -31,15 +32,24 @@ def http(port, path, data=None, timeout=60):
 
 
 def recordings():
-    return sorted(glob.glob(os.path.join(ROOT, "run", "server", "recordings", "players", "*", "*.mcpr")), key=os.path.getmtime)
+    # (a broken one — the server killed while saving it — is skipped; tools/replay_repair.py rebuilds those)
+    return sorted((f for f in glob.glob(os.path.join(ROOT, "run", "server", "recordings", "players", "*", "*.mcpr")) if zipfile.is_zipfile(f)),
+                  key=os.path.getmtime)
 
+
+def agent_of(replay):
+    """recordings/players/NAME/…mcpr: whose recording it is"""
+    return os.path.basename(os.path.dirname(replay))
 
 def flightlog_for(replay):
-    """the flight log whose session started closest to the recording's start"""
+    """that agent's flight log whose session started closest to the recording's start (the first agent's client lives
+    in run/client/, the others added with ./add_agent.sh in run/client-NAME/)"""
     with zipfile.ZipFile(replay) as z:
         start = json.loads(z.read("arcade_replay_meta.json")).get("epoch_time_ms", 0)
+    name = agent_of(replay)
+    dirs = [os.path.join(ROOT, "run", "client-" + name)] + ([os.path.join(ROOT, "run", "client")] if name == "Agent" else [])
     best = None
-    for f in glob.glob(os.path.join(ROOT, "run", "client", "flightlog", "*.jsonl")):
+    for f in (f for d in dirs for f in glob.glob(os.path.join(d, "flightlog", "*.jsonl"))):
         try: w = json.loads(open(f).readline())["w"]
         except Exception: continue
         if best is None or abs(w - start) < best[0]: best = (abs(w - start), f)
@@ -165,7 +175,12 @@ def main(a):
     cmd = a[0] if a else "help"
     st = json.load(open(STATE)) if os.path.exists(STATE) else {}
     if cmd == "open":
-        replay = a[1] if len(a) > 1 else (recordings() or [None])[-1]
+        # open [REPLAY | AGENT_NAME]: a file, the latest recording of that agent, or the latest of all
+        if len(a) > 1 and not os.path.exists(a[1]):
+            mine = [r for r in recordings() if agent_of(r) == a[1]]
+            if not mine: sys.exit(f"no recordings of {a[1]} (agents with recordings: {sorted({agent_of(r) for r in recordings()})})")
+            replay = mine[-1]
+        else: replay = a[1] if len(a) > 1 else (recordings() or [None])[-1]
         if not replay: sys.exit("no recordings yet")
         flog = flightlog_for(replay)
         json.dump({"replay": replay, "flightlog": flog}, open(STATE, "w"))

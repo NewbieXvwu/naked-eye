@@ -63,12 +63,23 @@ public final class Clock {
     }
 
     static Set<String> lastAgents = Set.of(); static int announceAt = -1;
+    static final Set<String> recording = new HashSet<>();
+    /** every agent in the world is recorded, each from its own place — also one added after the server started, and
+     *  one that reconnects (the recorder's own list is fixed at start-up, and it drops a player who leaves) */
+    static void record(MinecraftServer s, String name) {
+        try {
+            s.getCommands().performPrefixedCommand(s.createCommandSourceStack().withSuppressedOutput(), "replay start players " + name);
+            recording.add(name);
+        } catch (Throwable ignored) {}   // (no ServerReplay installed: nothing to do)
+    }
     /** every agent hears who else shares the world, since that decides how its clock behaves (told ~2 s after a
      *  change: a client that has just joined can't take our messages yet) */
     static void watchAgents(MinecraftServer s) {
         Set<String> now = new TreeSet<>();
         for (ServerPlayer p : s.getPlayerList().getPlayers()) if (Watch.isAgent(p)) now.add(p.getGameProfile().name());
         if (!now.equals(lastAgents) && announceAt < 0) announceAt = s.getTickCount() + 40;
+        recording.retainAll(now);   // (gone: its recording ended; start it again if it comes back)
+        for (String n : now) if (!recording.contains(n)) record(s, n);
         if (announceAt < 0 || s.getTickCount() < announceAt) return;
         announceAt = -1;
         List<String> what = new ArrayList<>();

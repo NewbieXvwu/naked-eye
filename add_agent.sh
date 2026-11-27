@@ -15,5 +15,5 @@ echo "$NAME starting (API on $PORT) ..."
 i=0; until python3 -c "import urllib.request,json,sys; o=json.load(urllib.request.urlopen('http://127.0.0.1:$PORT/observe', timeout=5)); sys.exit(0 if 'self' in o and 'open_screen' not in o['self'] else 1)" 2>/dev/null; do
   i=$((i+1)); sleep 2; kill -0 "$(cat run/client-$NAME.pid)" 2>/dev/null || { echo "client died:"; tail -20 "run/logs/client-$NAME.out"; exit 1; }
   [ $i -gt 200 ] && { echo "timed out"; exit 1; }; done
-python3 tools/rcon.py "replay start players $NAME" >/dev/null 2>&1   # (the recorder's list was fixed when the server started)
+# (the server starts recording it by itself, as it does for every agent that joins)
 echo "$NAME is in the world: HC_AGENT=$NAME tools/hc obs"
