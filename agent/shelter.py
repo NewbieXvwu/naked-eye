@@ -30,7 +30,20 @@ def obs():
 
 
 def act(q):
-    return call("/act", q)
+    """Send an action, and if the world is frozen on an alarm, send it again with resume.
+
+    Death #9 (2026-11-27 10:19): a zombie hit the player in the dark (5 -> 2 HP), the world paused, and
+    every dig/look/place below was answered "refused: the game is PAUSED (hurt 5 -> 2 HP) — send an
+    action with resume=true".  The script ignored the refusals, reached the end, and *printed a success
+    line* ("shelter: 3 blocks down … capped") while the player was still standing in the open at y=135.
+    Shelter is the one moment when resuming is right: we are already outside with a mob nearby."""
+    r = call("/act", q)
+    txt = json.dumps(r)[:4000]
+    if "refused" in txt and "PAUSED" in txt and not q.get("resume"):
+        q = dict(q)
+        q["resume"] = True
+        r = call("/act", q)
+    return r
 
 
 def feet(o):
@@ -127,6 +140,10 @@ def main(force):
         # last resort: walk down with the plain A* (it will accept a 1-block drop)
         act({"type": "walk", "x": x, "y": y - 3, "z": z, "risk": 9, "wait": 120})
         o = obs()
+    if feet(o)[1] >= y:
+        print(f"shelter failed: still at y={feet(o)[1]} (started {y}) — still in the open; "
+              f"nothing to do here but run or fight")
+        return 1
     print(f"in the hole at y={feet(o)[1]} (started at {y}); picking up what I dug")
     for _ in range(3):
         drops = [e for e in o.get("entities", []) if e.get("type") == "item" and e.get("dist", 9) < 3]
@@ -153,7 +170,7 @@ def main(force):
     o = obs()
     above = call("/sonar")["text"].splitlines()[-1].strip()
     print(f"above me: {above}")
-    if "ceiling" in above or "isn't empty" in str(msg):
+    if ("ceiling" in above or "isn't empty" in str(msg)) and feet(obs())[1] < y:
         act({"type": "note", "text": f"shelter: 3 blocks down at {x},{y},{z}, capped with {item}"})
         return 0
     print("cap does not read as a ceiling; still in the hole")

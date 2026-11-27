@@ -227,7 +227,7 @@ MARK entrance: 17 m west (behind-left), same level — reachable (P1)
 
 云端那一局搬到这台 Mac 上，世界重开一档（旧的留在 `run/server/world-night1`）。本机已经有官方的 26.3，`setup.sh` 只做了硬链接（游戏本体、库、资源都没重下），`./setup.sh` 几秒跑完；`python3 tools/verify.py` 18/18 全过；`hc speed auto` 在这台 M 系列 Mac 上**稳到 10×**（2–10 都过），比云端 2 vCPU 那台（5×）快一倍。
 
-**八条命的死因（按机制分类）**
+**九条命的死因（按机制分类）**
 - 夜里空手被骷髅射死（20→18→13→0）：3 格洞挖下去了，人却没跟下去，挖出来的土落在洞底拿不到，封顶没有方块。→ `agent/shelter.py` 重写：每挖一格都核对自己在不在洞里，自己走进竖井、捡起掉落、按"头顶正上方"封，怪在 14 m 内拒绝开工；`hole.sh` 变成它的一行别名。
 - 挖竖井掉进 13 格深的洞（20 血→1 血），脚本无视告警把同一条 `mine` 又发一遍，被 15 m 外黑暗里的骷髅补了最后一箭。→ `agent/descend.py` 每次动作返回都先过 `stop_reason()`：死亡、≤14 血、掉血、摔伤、16 m 内有敌对生物、lava、被拒绝，命中即停；竖井撞到填不上的空洞也停（不再硬往下）。测试 `agent/tests/test_descend.py`。
 - 日出开封顶时僵尸就站在洞口 5 m 内（怪会站在封顶的土块上），空手 6 血，跑不过。→ `agent/shelter.py --out`：12 m 内有怪、或血 ≤6，就不开封顶；`agent/gather.py` 也接上了同一个护栏（掉血、低血、12 m 内有怪就停），它在死前那 10 秒里一直硬砍树（18→8 血）。护栏集中在 `agent/safety.py`，测试 `agent/tests/test_safety.py`。
@@ -238,6 +238,7 @@ MARK entrance: 17 m west (behind-left), same level — reachable (P1)
 - 第六命：又用 `agent/descend.py` 在 (94,129,-15) 往南挖 y110，还是挖穿同一片洞顶。mod 喊了 `⏸ PAUSED: FALLING`，我发的下一条 `place` 把世界解冻，人从 y110 掉到 y89。→ 在 `safety.py` 里加死区 `SPAWN_CAVERN = (58, 112, -48, 30)`，`descend.py` 在盒子里直接拒开工（要挖得先走到 150 m 外）；`probe.py` 的请求体也从 `{"type":"dig","pos":[…]}` 改成 `x/y/z`，并把 400 的 `error` 读出来（以前 mod 报 500，脚本只看到"炸了"）。
 - 第七命：在石岸山脚从 y62 斜着挖到 y16 找铁。表面写着 `stony_shore`，头顶其实是海；北向第一条隧道第 2 格就挖穿含水层（`[reflex] head underwater, air 99%`），之后还继续发 `mine south 16`，等于往灌满水的通道里游，最后淹死。→ `safety.stop_reason()` 把 `drown / out of air / head underwater` 当硬停，气泡 ≤3 也停；`descend.py`、`ores.py` 用 `near_water()` 拒在岸边开挖；打法手册新增「海面下面不要挖」「破水就倒退，往头顶那格挖」。
 - 第八命：被骷髅从崖顶射下海里后只剩 5 血、饥饿 16，为了捞 29 m 外的海带游进 lukewarm_ocean，一只 drowned 一直在身后游（死前 15 秒的音频里全是 `Drowned swims` / `Drowned gurgles`，可都在视野外），mod 的反射在水里还手，2 血时被拖死。→ `safety.stop_reason()` 新增两条硬停：「在水里且 24 m 内有 drowned 就往岸上游」「≤8 血且在水里就必须上岸」；3 个新测试；打法手册写上「低血量不下水、水里不还手、不为食物下水」。
+- 第九命：黑夜的树林里 5 血、没吃的，僵尸从东边背后打了一下（5 → 2 HP），世界按警报冻结；`agent/shelter.py` 接着发的每条 `dig`/`look`/`place` 都被回成 `refused: the game is PAUSED … send an action with resume=true`，脚本不看回包、照样跑完，还打印了一句「shelter: 3 blocks down … capped」——人其实还站在原地，随后被僵尸打死。→ `shelter.py` 的 `act()` 遇到 PAUSED 自动带 `resume` 重发，`main()` 结尾必须验证 y 真的下降才允许报成功，否则报失败；2 个新测试；打法手册写上「警报里要主动 resume，掩体脚本结尾必须自验」。
 
 **顺手修掉的工具 bug**：`tools/review.py` 以前用录像元数据的 `epoch_time_ms` 找旁路日志，那是录像**打包时**写的，长局里晚好几分钟，于是 `open` 说找不到日志、`deaths`/`report` 静默。现在先用录像目录名当开局时间（`YYYY-MM-DD--HH-MM-SS`，本地时间）。
 
