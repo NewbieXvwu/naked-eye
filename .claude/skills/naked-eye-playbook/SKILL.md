@@ -76,7 +76,8 @@ description: "Use when playing or developing Naked Eye (眼见为实), the naked
 - 用 `/summon` 召唤的骷髅手里没有弓（跳过了自然生成时的初始化），测试时要手动给它配弓。
 - verify 里的 `arena()` 会把 agent 从 y225 带着缓降放下去：要先落地，再清掉药水效果。
 - 端口一律从 `tools/ports.py` 取（槽位 +100×N），不要在代码里写死 7070/25575；新工具也要这样。
-- 同一个世界里有两个以上 Agent 时，`Pause` 会自动关掉暂停（`otherAgentHere`：在线玩家里有非旁观者）。观战者都是旁观者，不算 Agent。
+- 冻结和解冻的裁决由服务端的 `Clock` 统一做：客户端只发 Hold(on/off)，有人按住，世界就停。不要再从客户端直接用 RCON 发 `tick freeze/unfreeze`，那样会抢掉别的 Agent 的暂停。"等 N tick"要用 `HonestClient.worldTicks`，`ticks` 在冻结期间也会照常增加。
+- 测多 Agent 时，不要在一个 Agent 的动作还没返回时，又用同一份测试脚本去等另一个 Agent，很容易把自己锁死。查别的 Agent 的位置，用 RCON 最省事。
 - 能从游戏给客户端的结构化数据里拿到的东西（伤害事件、实体状态），就别去匹配字幕或显示文字。伤因来自 `Hurt.java`（伤害事件包）。"看得见"一律用 `Perception.entities(…, true)` 的结果：`anyPointVisible` 只管有没有东西挡着，不管视野，单独用它就会泄露背后的东西。
 - ServerReplay 的玩家录制器原本只让 Flashback 格式暂停；对 ReplayMod 格式来说，暂停只是停时钟、不丢包，所以服务端 mod 放开了这个限制（`RecordingClock`）：冻结期间照录，但不计时。`replay_cut.py` 只给更早的旧录像用。
 

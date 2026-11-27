@@ -50,7 +50,7 @@ def get(path):
 
 def post(obj):
     req = urllib.request.Request(API + "/act", data=json.dumps(obj).encode(), method="POST")
-    with urllib.request.urlopen(req, timeout=90) as r: return json.load(r)
+    with urllib.request.urlopen(req, timeout=None) as r: return json.load(r)   # (no limit: with other agents in the world, their thinking can hold mine up)
 
 def cursor():
     try: return int(open(CUR).read())

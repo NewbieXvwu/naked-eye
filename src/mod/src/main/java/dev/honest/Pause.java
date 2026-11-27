@@ -48,20 +48,11 @@ public final class Pause {
         LocalPlayer pl = mc.player;
         if (pl == null) return;
         float hp = pl.getHealth(); int air = pl.getAirSupply();
-        // Several agents in one world: there's one clock, and no rule yet for whose thinking may stop it, so the world
-        // runs in real time — no thinking pause, no alarm pause. (The time model for many agents is an open design.)
-        boolean multi = otherAgentHere(mc);
-        if (multi != multiAgent) {
-            multiAgent = multi;
-            Events.note("pause", multi ? "another agent is in this world: no pausing — the world runs in real time"
-                                       : "I'm the only agent again: thinking pause back on");
-        }
-        if (multi) { if (paused != null) resume("another agent is in this world"); speedGuard(mc); lastHp = hp; lastAir = air; return; }
         // joined (or restarted) into a world that is still frozen from an earlier pause: own it, so the next action resumes
         // someone else unfroze the world under my thinking-pause: let go of it, so the idle pause can freeze it again
         if ("idle".equals(pausedKind) && paused != null && mc.level != null && mc.level.tickRateManager().runsNormally()
                 && System.currentTimeMillis() - pausedAtMs > 3000) { paused = null; idleTicks = 0; }
-        if (allow && paused == null && mc.level != null && !mc.level.tickRateManager().runsNormally() && mode.equals("freeze")
+        if (allow && paused == null && mc.level != null && !mc.level.tickRateManager().runsNormally() && mode.equals("freeze") && !serverClock()
                 && System.currentTimeMillis() - resumedAtMs > 5000) { // (not the few ticks before our own unfreeze arrives)
             paused = "the game was already paused when I (re)joined"; pausedKind = idle ? "idle" : "manual"; pausedAtMs = System.currentTimeMillis();
         }
@@ -124,16 +115,6 @@ public final class Pause {
         }
     }
 
-    static boolean multiAgent;
-    /** another player in the world who isn't a spectator (watchers are spectators) */
-    static boolean otherAgentHere(Minecraft mc) {
-        var c = mc.getConnection(); var me = mc.player;
-        if (c == null || me == null) return false;
-        for (var info : c.getOnlinePlayers())
-            if (!info.getProfile().id().equals(me.getUUID()) && info.getGameMode() != net.minecraft.world.level.GameType.SPECTATOR) return true;
-        return false;
-    }
-
     static String pausedKind = "manual"; static String pausedKindLast = ""; static int lastFirePause = -9999;
     public static void pause(String why, String kind) {
         if (paused != null) {   // already frozen for thinking; an explicit pause just relabels it (world is frozen already)
@@ -141,9 +122,9 @@ public final class Pause {
             return;
         }
         paused = why; pausedKind = kind; pausedAtMs = System.currentTimeMillis();
-        if ("idle".equals(kind)) { IO.submit(() -> rcon("tick freeze")); return; }   // silent: it happens after every action
+        if ("idle".equals(kind)) { hold(true, why); return; }   // silent: it happens after every action
         Events.note("pause", "⏸ PAUSED" + (mode.equals("slow") ? " (world at 1/20 speed)" : "") + ": " + why + " — your next action resumes");
-        if (mode.equals("freeze")) { IO.submit(() -> rcon("tick freeze")); return; }
+        if (mode.equals("freeze")) { hold(true, why); return; }
         IO.submit(() -> {
             String q = rcon("tick query");
             Matcher m = Pattern.compile("([0-9]+(?:\\.[0-9]+)?)").matcher(q == null ? "" : q.replaceAll(".*[Tt]arget tick rate: ", ""));
@@ -161,8 +142,19 @@ public final class Pause {
         if (!wasIdle) { quietUntil.put(pausedKind, HonestClient.ticks + 40); Events.note("pause", "▶ resumed (" + why + ")"); }
         idleTicks = 0;
         float r = resumeRate;
-        if (mode.equals("freeze")) { IO.submit(() -> rcon("tick unfreeze")); return; }
+        if (mode.equals("freeze")) { hold(false, why); return; }
         IO.submit(() -> rcon(String.format(Locale.ROOT, "tick rate %.1f", r)));
+    }
+
+    /** hold the world / let go. The server's clock (honest-pause mod) runs the world only while no agent holds it, so
+     *  several agents can share a world: it stands still while any of us thinks. Without it, fall back to RCON. */
+    static void hold(boolean on, String why) {
+        if (serverClock()) dev.honest.pause.Clock.send(on, why);
+        else IO.submit(() -> rcon(on ? "tick freeze" : "tick unfreeze"));
+    }
+    static boolean serverClock() {
+        try { return net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.canSend(dev.honest.pause.Clock.Hold.TYPE); }
+        catch (Throwable t) { return false; }
     }
 
     // ------------------------------------------------------------------ minimal RCON client

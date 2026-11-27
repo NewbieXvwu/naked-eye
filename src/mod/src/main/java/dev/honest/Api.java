@@ -33,6 +33,7 @@ public final class Api {
     /** agent API port (the experimenter's is the next one); a second client on the same machine needs its own */
     static final int PORT = Integer.getInteger("honest.port", 7070);
 
+    static final Object ACTING = new Object();
     public static void start() throws IOException {
         HttpServer agent = HttpServer.create(new InetSocketAddress("127.0.0.1", PORT), 0);
         agent.createContext("/observe", ex -> handle(ex, () -> {
@@ -80,13 +81,23 @@ public final class Api {
             j.addProperty("text", onClient(() -> Sonar.describe(Minecraft.getInstance())));
             return j;
         }));
-        agent.createContext("/act", ex -> handle(ex, () -> act(JsonParser.parseString(body(ex)).getAsJsonObject())));
+        // actions one at a time (one body); looking (observe, status…) still answers while an action waits on the world —
+        // with other agents in it, the world may stand still for a long time under my pending action
+        // A new action supersedes one still waiting (its caller may be gone: a killed hc, a dropped connection), so a
+        // stale wait can't block the next decision while the world stands still for someone else's thinking.
+        agent.createContext("/act", ex -> handle(ex, () -> {
+            JsonObject a = JsonParser.parseString(body(ex)).getAsJsonObject();
+            for (Wait w : WAITS) if (w.latch.getCount() > 0) { w.woke = "superseded by a newer action"; w.latch.countDown(); }
+            synchronized (ACTING) { return act(a); } }));
         agent.createContext("/status", ex -> handle(ex, () -> onClient(() -> {
             JsonObject j = Controller.status();
             var lvl = Minecraft.getInstance().level;
             j.addProperty("client_ticks", HonestClient.ticks);           // for measuring how fast this machine keeps up
             if (lvl != null) j.addProperty("game_time", lvl.getGameTime());
             if (lvl != null) { j.addProperty("tick_rate", lvl.tickRateManager().tickrate()); j.addProperty("frozen", !lvl.tickRateManager().runsNormally()); }
+            j.addProperty("holding_world", Pause.paused == null ? "no" : Pause.pausedKind + ": " + Pause.paused);
+            j.addProperty("acts_in_flight", Pause.actsInFlight.get());
+            j.addProperty("clock", Pause.serverClock() ? "server" : "rcon");
             return j; })));
         // for the human watching, not for the agent (it tells nothing about the world): /window?show=1|0
         agent.createContext("/window", ex -> handle(ex, () -> onClient(() -> {
@@ -94,6 +105,7 @@ public final class Api {
             j.addProperty("result", v == null ? (HonestClient.shown ? "shown" : "hidden") : HonestClient.setShown("1".equals(v)));
             return j; })));
         agent.setExecutor(Executors.newSingleThreadExecutor());
+        agent.setExecutor(java.util.concurrent.Executors.newCachedThreadPool(r -> { Thread t = new Thread(r, "honest-api"); t.setDaemon(true); return t; }));
         agent.start();
 
         // experimenter-only: ground truth for the tests. A contest run switches it off (HONEST_DEBUG=0 -> -Dhonest.debug=false)
@@ -157,6 +169,7 @@ public final class Api {
             return new JsonObject();
         }));
         debug.setExecutor(Executors.newSingleThreadExecutor());
+        debug.setExecutor(java.util.concurrent.Executors.newCachedThreadPool(r -> { Thread t = new Thread(r, "honest-debug"); t.setDaemon(true); return t; }));
         debug.start();
         HonestClient.LOG.info("[honest] agent API on 127.0.0.1:" + PORT + ", experimenter API on 127.0.0.1:" + (PORT + 1));
     }
@@ -327,12 +340,19 @@ public final class Api {
             // happens, at any game speed — not on a wall-clock poll that gets coarser the faster the game runs
             Wait w = onClient(() -> {
                 var p = Minecraft.getInstance().player;
-                Wait x = new Wait(HonestClient.ticks + Math.min(waitTicks, 1200), waitForTask,
+                Wait x = new Wait(HonestClient.worldTicks + Math.min(waitTicks, 1200), waitForTask,
                         p == null ? 0 : p.getHealth(), p == null ? 0 : p.getAirSupply());
                 WAITS.add(x); return x;
             });
-            try { w.latch.await(Math.min(waitTicks, 1200) * 50L + 10_000, java.util.concurrent.TimeUnit.MILLISECONDS); }   // (safety net if the client stalls)
-            catch (InterruptedException ignored) {}
+            // no wall-clock limit: the world may stand still for a long time while another agent thinks. Give up only
+            // if the client itself stops ticking (stalled) for 10 s.
+            try {
+                int seen = HonestClient.ticks; long stillSince = System.currentTimeMillis();
+                while (!w.latch.await(500, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                    if (HonestClient.ticks != seen) { seen = HonestClient.ticks; stillSince = System.currentTimeMillis(); }
+                    else if (System.currentTimeMillis() - stillSince > 10_000) break;
+                }
+            } catch (InterruptedException ignored) {}
             WAITS.remove(w);
             if (w.woke != null) res.addProperty("woke", w.woke);
             res.add("observation", observe(Map.of("cursor", a.has("cursor") ? a.get("cursor").getAsString() : "0")));
@@ -359,7 +379,7 @@ public final class Api {
             else if (p != null && p.getAirSupply() < Math.min(w.air0, p.getMaxAirSupply()) - 60) alarm = "running out of air";
             else if (Pause.paused != null && !"idle".equals(Pause.pausedKind)) alarm = "PAUSED: " + Pause.paused;
             if (alarm != null) w.woke = alarm;
-            if (alarm != null || HonestClient.ticks >= w.untilTick || (w.forTask && Controller.task == null)) w.latch.countDown();
+            if (alarm != null || HonestClient.worldTicks >= w.untilTick || (w.forTask && Controller.task == null)) w.latch.countDown();
         }
     }
 

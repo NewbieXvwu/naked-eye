@@ -199,7 +199,7 @@ MARK entrance: 17 m west (behind-left), same level — reachable (P1)
 ## 一台机器多个实例；同一个世界多个 Agent（接口已留）
 
 - **各玩各的**：一份仓库副本就是一个实例。`tools/ports.py` 给每份副本分一个槽位，所有端口整体 `+100 × 槽位`，游戏文件共用 `~/.cache/naked-eye`。用法见 `PORTABLE.md`。
-- **同一个世界多 Agent**：`./add_agent.sh 名字` + `HC_AGENT=名字 tools/hc …`。服务端每秒重读一次 `agents.txt`，新名字自动算作 Agent，不当成观战者；录像会给它单独开一条。还没定的是**时间模型**：思考暂停冻结的是整个世界，所以眼下只要有第二个 Agent 在场，客户端就自动关掉暂停，世界按实时运行。"任何人在想世界就停"其实就是一种回合长度不固定的回合制：世界每次只跑到下一个 Agent 的动作结束。它和固定回合（每轮固定 N tick）真正的区别在于**决策频率**：前者谁把动作切得越碎，谁的反应机会就越多，而且思考不花游戏时间，等于白拿；后者每个 Agent 每秒的决策次数相同。但这并不构成不公平：切碎动作不花游戏时间，谁都可以这么做，大家都切到 1 tick 时，就成了最公平的逐 tick 锁步。代价只是墙钟时间。另外，Agent 已经可以无限期思考，再用"最短动作时长"去模仿人的反应时间，就是自相矛盾。所以倾向直接用"任何人在想世界就停"。真正要处理的只有墙钟效率，比如给每次思考设一个墙钟上限。
+- **同一个世界多 Agent**：`./add_agent.sh 名字` + `HC_AGENT=名字 tools/hc …`。服务端每秒重读一次 `agents.txt`，新名字自动算作 Agent，不当成观战者；录像会给它单独开一条。**时间模型已经定了，也写好了**（`Clock.java`，服务端）：所有 Agent 都在动，世界才走；有一个在想，世界就停。以前是各个客户端自己用 RCON 冻结、解冻，现在改成客户端只向服务端报告"我按住世界"或"我松手"，由服务端统一裁决，单 Agent 只是 N=1 的特例。配套改动有三处：等待改按世界真正走过的 tick 数（客户端在冻结期间照样每秒跑 20 tick）；动作等待不再有墙钟超时；查看类的请求在动作等待期间也能照常应答；新动作一到，就把还在等待的旧动作结束掉（hc 被杀掉之后，它留下的等待不会再堵住下一个决定）。测试在 `tools/verify_multi.py`。思考上限是 `clock.properties` 里的 `think_limit_seconds`，默认不限。"任何人在想世界就停"其实就是一种回合长度不固定的回合制：世界每次只跑到下一个 Agent 的动作结束。它和固定回合（每轮固定 N tick）真正的区别在于**决策频率**：前者谁把动作切得越碎，谁的反应机会就越多，而且思考不花游戏时间，等于白拿；后者每个 Agent 每秒的决策次数相同。但这并不构成不公平：切碎动作不花游戏时间，谁都可以这么做，大家都切到 1 tick 时，就成了最公平的逐 tick 锁步。代价只是墙钟时间。另外，Agent 已经可以无限期思考，再用"最短动作时长"去模仿人的反应时间，就是自相矛盾。所以所以采用"任何人在想世界就停"，墙钟效率由思考上限来管（见上）。
 - **伤因不再靠猜**（`Hurt.java`）：以前是拿字幕字符串（"falls on a block""Explosion"）加上 fallDistance 拼出来的，又脆又不准。现在直接读服务器每次伤害都会发给客户端的伤害事件（`ClientboundDamageEventPacket`，原版靠它决定屏幕往哪边歪），里面有伤害类型、攻击者和来源位置。对 Agent 的规则：伤害类型直接告诉它（人总知道自己是摔的、烧的还是饿的，死亡信息也会写明）；攻击者只有这一刻在画面上才说出名字，判断标准和 `obs` 是同一套。看不见的分三种说：off-screen（转头就能看到）、right in front of me that I can't make out（就在画面里，但太暗、被挡住或者隐身），以及远程攻击的 not in view（箭从哪里来，不等于射手站在哪里）；方向只给八个方位之一，相当于屏幕歪的那一下。测试见 T17。
 - 同时堵住了一个旧漏洞：原来的"a zombie right next to me"只检查有没有东西挡着，不检查视野，所以背后的怪也会被报出来。
 
@@ -215,7 +215,7 @@ MARK entrance: 17 m west (behind-left), same level — reachable (P1)
 - `setup.sh` / `start.sh` / `stop.sh` / `window.sh` / `add_agent.sh`：下载、启动、停止、开关游戏窗口、往世界里再加一个 Agent。`tools/ports.py`：本副本的端口槽位。`launcher/mc.py` 是启动器，只用 Python 标准库。
 - `src/mod/`：客户端 mod（感知、动作、反射、暂停）；`src/pause-mod/`：服务端 mod（真暂停、附身观战）。改完用 `tools/build.sh` 编译，jar 会放进 `mods/`（需要 Java 25 和网络）。
 - `mods/`：编译好的三个 mod。其中 `baritone-honest.jar` 是改过的 Baritone（LGPL-3.0），源码在子模块 `src/baritone`，同时附了 `baritone-honest.patch`。许可证说明见 `THIRD_PARTY.md`。
-- `tools/hc`：Agent 的命令行；`tools/verify.py`：验收测试（实验者用）；`tools/rcon.py`：实验者的 RCON；`tools/replay_cut.py`：剪掉录像里的思考时间；`tools/make_packages.sh` / `make_drive_parts.sh`：打联网版、离线版和小分段。
+- `tools/hc`：Agent 的命令行；`tools/verify.py`：验收测试（实验者用）；`tools/verify_multi.py`：多 Agent 共用时钟的测试（会临时再启动一个客户端）；`tools/rcon.py`：实验者的 RCON；`tools/replay_cut.py`：剪掉录像里的思考时间；`tools/make_packages.sh` / `make_drive_parts.sh`：打联网版、离线版和小分段。
 - `agent/`：Agent 自己写的脚本，只调用诚实 API；`agent/claude-scripts/`：Claude 玩的时候顺手写的小工具。
 - `config/`：首次运行时用到的模板（客户端选项、服务器配置、Agent 名单 `naked-eye/agents.txt`）。
 - `AGENTS.md`：给任何一家 AI 看的说明和规则；`.claude/skills/naked-eye-playbook/`：Claude 的打法手册。

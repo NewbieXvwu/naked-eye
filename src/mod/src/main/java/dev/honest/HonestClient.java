@@ -10,6 +10,8 @@ import org.slf4j.LoggerFactory;
 public class HonestClient implements ClientModInitializer {
     public static final Logger LOG = LoggerFactory.getLogger("honest");
     public static volatile int ticks = 0;
+    /** ticks the world actually ran (the client ticks on while frozen): what "wait N ticks" counts */
+    public static volatile int worldTicks = 0;
     public static volatile boolean followServerClock = Boolean.parseBoolean(System.getProperty("honest.fastclock", "true"));
     public static volatile int dbgMissTime = -1;
     /** no screen at all (Linux offscreen): never draw. Otherwise the window can be shown and hidden at will */
@@ -42,6 +44,7 @@ public class HonestClient implements ClientModInitializer {
             // once in the world, start hidden unless asked to show (honest.show): saves power, the agent doesn't need it
             if (!startVisibilityDone && mc.player != null) { startVisibilityDone = true; if (!Boolean.getBoolean("honest.show")) setShown(false); }
             boolean frozen = mc.level != null && !mc.level.tickRateManager().runsNormally();
+            if (!frozen && mc.level != null) worldTicks++;
             try { Review.tick(mc); } catch (Throwable t) { LOG.warn("[honest] review pose failed", t); }   // (before the eyes look)
             if (Review.ON) {} else if (!frozen || !Pause.allow) Controller.tick(mc); else Controller.releaseKeys(mc);   // (pausing off: not my pause)
             try { ArrowLog.tick(mc); } catch (Throwable t) { LOG.warn("[honest] arrow log failed", t); }
@@ -53,6 +56,7 @@ public class HonestClient implements ClientModInitializer {
                 try { Perception.sweep(mc); } catch (Throwable t) { LOG.warn("[honest] sweep failed", t); }
             }
         });
+        dev.honest.pause.Clock.onSay(t -> Events.note("pause", t));   // the server's clock: who else shares the world, time limits
         ClientLifecycleEvents.CLIENT_STARTED.register(mc -> {
             mc.getSoundManager().addListener(Events::onSound);
             if (BaritoneBridge.present()) BaritoneBridge.install();

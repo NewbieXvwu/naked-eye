@@ -55,6 +55,7 @@ public final class Watch implements ModInitializer {
         // the agents' commentary channel (registered on both sides: this mod is on the client too)
         net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry.serverboundPlay().register(Note.TYPE, Note.CODEC);
         net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.registerGlobalReceiver(Note.TYPE, (n, ctx) -> Note.onServer(ctx.player(), n.text()));
+        Clock.register();
 
         ServerPlayConnectionEvents.JOIN.register((h, sender, server) -> {
             ServerPlayer p = h.player;
@@ -63,6 +64,7 @@ public final class Watch implements ModInitializer {
             wants.put(p.getUUID(), "*");
             p.sendSystemMessage(Component.literal("Watching. Sneak to fly freely; left-click an agent or /watch [name] to get back in."));
         });
+        ServerPlayConnectionEvents.DISCONNECT.register((h, server) -> Clock.left(h.player));
         ServerPlayConnectionEvents.DISCONNECT.register((h, server) -> { inside.remove(h.player.getUUID()); wants.remove(h.player.getUUID()); lastSig.remove(h.player.getUUID()); });
         // the agents must not learn that anyone is watching: no "X joined / left the game" for watchers
         ServerMessageEvents.ALLOW_GAME_MESSAGE.register((server, msg, overlay) -> {
@@ -75,6 +77,7 @@ public final class Watch implements ModInitializer {
         });
         ServerTickEvents.END_SERVER_TICK.register(Watch::tick);
         ServerTickEvents.END_SERVER_TICK.register(RecordingClock::tick);
+        ServerTickEvents.END_SERVER_TICK.register(Clock::tick);
         CommandRegistrationCallback.EVENT.register((d, ctx, env) -> d.register(Commands.literal("watch")
                 .executes(c -> watch(c.getSource().getPlayerOrException(), null))
                 .then(Commands.argument("agent", StringArgumentType.word())
