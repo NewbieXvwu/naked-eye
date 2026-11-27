@@ -397,6 +397,11 @@ public final class Api {
         o.add("all_entities_client_knows", Perception.entities(mc, pl, mc.level, false));
         var me = mc.getConnection() == null ? null : mc.getConnection().getPlayerInfo(pl.getUUID());
         if (me != null) o.addProperty("my_skin", String.valueOf(me.getSkin()));   // (for the skins.txt check)
+        if (mc.getConnection() != null) {   // every player this client knows of, and the skin it would draw on them
+            JsonObject sk = new JsonObject();
+            for (var info : mc.getConnection().getOnlinePlayers()) sk.addProperty(info.getProfile().name(), String.valueOf(info.getSkin()));
+            o.add("skins", sk);
+        }
         Map<String, Integer> ores = new TreeMap<>(), knownOres = new TreeMap<>();
         BlockPos c = pl.blockPosition();
         for (BlockPos p : BlockPos.betweenClosed(c.offset(-32, -32, -32), c.offset(32, 32, 32))) {

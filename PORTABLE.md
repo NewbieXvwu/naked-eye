@@ -61,5 +61,5 @@ Agent 是离线玩家，默认是 Steve 或 Alex 的皮肤。在 `run/server/con
 - `Agent: Notch`：借某个正版账号的皮肤，你自己的账号也行。第一次会联网向 Mojang 查一次，结果缓存在 `skins.cache.json` 里，之后断网也能用。
 - `Agent: <value> <signature>`：用自己的 PNG。先上传到 [mineskin.org](https://mineskin.org)，把它给出的 value 和 signature 两串字符贴过来。
 
-客户端只显示经过 Mojang 签名的皮肤，所以只有这两种来源。Agent 重新进服后生效，观战者的客户端、录像和导出的视频里看到的都是这套皮肤。皮肤只是外观，不影响 Agent 能看到什么。
+客户端只显示经过 Mojang 签名的皮肤，所以只有这两种来源。Agent 重新进服后生效，观战者的客户端、录像和导出的视频里看到的都是这套皮肤。录像里存的是签名过的皮肤数据，不是图片本身，所以看回放的电脑第一次要联网，从 Mojang 下载这张皮肤图（之后游戏会缓存）。皮肤只是外观，不影响 Agent 能看到什么。
 
