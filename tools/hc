@@ -139,7 +139,25 @@ def nudge(kind):
     if n and n % NOTE_NAG == 0:
         print(f"📝 {n} actions since your last note — one line please: hc note \"how it's going, what's next\"")
 
+# Actions that happen inside a screen; everything else happens in the world, and a screen left open
+# silently swallows it (the dig just times out — that cost this agent most of a morning three times).
+IN_SCREEN = {"craft", "open", "close", "interact", "use_at", "inventory", "slot", "to_hotbar",
+             "hotbar", "say", "note", "respawn", "stop", "pause"}
+
+def clear_screen():
+    """A human presses Escape before digging. Do the same, and say so out loud."""
+    try:
+        s = get("/observe").get("self", {})
+        if s.get("open_screen"):
+            print(f"ℹ️  {s['open_screen']} was open — closing it (an open screen swallows every world action)")
+            post({"type": "close", "cursor": cursor(), "resume": True, "wait": 50})
+            return True
+    except Exception:
+        pass
+    return False
+
 def act(obj, wait=400):
+    if obj.get("type") not in IN_SCREEN: clear_screen()
     obj.setdefault("wait", wait); obj["cursor"] = cursor()
     nudge(obj.get("type"))
     # me typing a command = a decision, so it resumes a paused game; scripts set HC_SCRIPT=1 and get refused instead
@@ -209,7 +227,7 @@ def main(a):
         print("->", r.get("result")); fmt(r["observation"])
     elif c == "eat":   # hc eat — eat the best food in the hotbar (hold right-click ~1.7 s), then go back to the held slot
         o = get("/observe"); inv = o["self"]["inventory"]; cur = o["self"].get("selected_slot", 0)
-        pref = ["golden_carrot", "cooked_beef", "cooked_porkchop", "cooked_mutton", "cooked_salmon", "cooked_cod", "cooked_chicken", "bread", "baked_potato", "cooked_rabbit", "apple", "carrot", "salmon", "cod", "tropical_fish", "dried_kelp", "sweet_berries", "melon_slice", "porkchop", "beef", "chicken", "mutton", "rabbit", "rotten_flesh"]
+        pref = ["golden_carrot", "cooked_beef", "cooked_porkchop", "cooked_mutton", "cooked_salmon", "cooked_cod", "cooked_chicken", "bread", "baked_potato", "cooked_rabbit", "apple", "carrot", "salmon", "cod", "tropical_fish", "dried_kelp", "kelp", "sweet_berries", "melon_slice", "porkchop", "beef", "chicken", "mutton", "rabbit", "rotten_flesh"]
         food = sorted([i for i in inv if i["item"] in pref and i["slot"] < 9], key=lambda i: pref.index(i["item"]))
         if not food: print("no food in the hotbar"); return
         act({"type": "hotbar", "slot": food[0]["slot"]}, 1)
