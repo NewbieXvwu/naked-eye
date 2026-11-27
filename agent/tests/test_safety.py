@@ -145,3 +145,23 @@ def test_near_water_on_a_shore_with_the_sea_in_view():
     assert near_water(o)
     dry = {"self": {"biome": "forest"}, "blocks_in_view": [{"block": "stone"}]}
     assert not near_water(dry)
+
+
+def test_a_drowned_in_the_water_is_not_something_to_fight():
+    """death #8: 5 HP, in the sea, kelp in sight, a drowned fifteen seconds away by sound."""
+    o = {"self": {"health": 20, "in_water": True},
+         "entities": [{"id": 4453, "type": "drowned", "dist": 10.2}]}
+    why = stop_reason(o)
+    assert why and "water" in why and "drowned" in why
+
+
+def test_hurt_in_water_means_swim_to_land():
+    o = {"self": {"health": 5, "in_water": True}, "entities": []}
+    why = stop_reason(o)
+    assert why and "land" in why
+
+
+def test_a_drowned_on_dry_land_does_not_stop_ordinary_work():
+    o = {"self": {"health": 20, "in_water": False},
+         "entities": [{"id": 9, "type": "drowned", "dist": 19.0}]}
+    assert stop_reason(o) is None

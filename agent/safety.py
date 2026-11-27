@@ -17,6 +17,10 @@ Learned the hard way:
     first step already had the head underwater ("air 99%"), and the next `mine` was sent anyway — so
     the agent swam deeper into the flooded passage and drowned with 45 m of ocean above it. Water is
     like a fall: the alarm is the line to stop on, and there is no "one more block" after it.
+  - death #8 (drowned): at 5 HP, out of food, I swam 30 m into the sea because kelp was the only food
+    in sight. The report shows "Drowned swims (behind)" and "Drowned gurgles" for fifteen seconds
+    before the end, and the reflex fought it under water at 2 HP. Water is the one place where the
+    agent is slower than the mob; never go in with low HP and never fight in it.
 
 usage:
     from safety import stop_reason, hostiles
@@ -31,6 +35,7 @@ HOSTILE = ("zombie", "skeleton", "creeper", "spider", "enderman", "witch", "drow
 # Coordinates are the box we have actually seen the cavern reach (x0, x1, z0, z1).
 SPAWN_CAVERN = (58, 112, -48, 30)
 
+WATER_HOSTILES = ("drowned", "guardian", "elder_guardian")
 LOW_HP = 14          # at or below: stop working, eat or retreat
 HOSTILE_METRES = 12  # closer than this and the next thing that happens is a hit, not a block
 
@@ -67,6 +72,7 @@ def res_text(res):
 def stop_reason(o, res="", start_hp=None, within=HOSTILE_METRES):
     """Why the script must stop and give control back (a human sentence), or None to carry on."""
     me = o.get("self", {})
+    hp = me.get("health")
     if me.get("dead"):
         return "dead"
     text = res_text(res)
@@ -80,7 +86,13 @@ def stop_reason(o, res="", start_hp=None, within=HOSTILE_METRES):
     bubbles = me.get("air_bubbles")
     if bubbles is not None and bubbles <= 3:
         return f"air bubbles {bubbles} left — get my head out of the water before anything else"
-    hp = me.get("health")
+    wet = [m for m in hostiles(o, within=24)
+           if any(w in ((m.get("type") or m.get("name") or "").lower()) for w in WATER_HOSTILES)]
+    if wet and (me.get("in_water") or "drowned" in r):
+        return ("a drowned is in the water: " + describe(wet) +
+                " — get out of the water now; I swim slower than it does, so I do not fight in water")
+    if me.get("in_water") and hp is not None and hp <= 8:
+        return f"HP {hp} and in water — swim to land; the sea is not a place to be hurt in"
     if hp is not None:
         if hp <= LOW_HP:
             return f"HP {hp} is too low to work on — eat or save myself first"

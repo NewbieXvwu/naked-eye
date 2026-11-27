@@ -17,7 +17,7 @@ import sys
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from safety import stop_reason, near_water  # noqa: E402
+from safety import stop_reason, near_water, res_text  # noqa: E402
 
 API = "http://127.0.0.1:7070"
 DEFAULT_WANT = ("iron_ore", "deepslate_iron_ore", "coal_ore", "deepslate_coal_ore",
@@ -82,15 +82,16 @@ def main(argv):
               f"({o['self'].get('biome')}, water in view) — walk inland first, or pass --force.")
         return 2
     done = 0
+    blacklist = set()   # cells that would not come out: never dig the same block twice
     for step in range(top * 4):
         why = stop_reason(o, start_hp=start_hp)
         if why:
             print(f"⏸ stopped: {why}")
             return 2
-        cands = ores_in_view(o, want)
+        cands = [c for c in ores_in_view(o, want) if tuple(c["nearest"]) not in blacklist]
         if not cands:
             o = look_around(o)
-            cands = ores_in_view(o, want)
+            cands = [c for c in ores_in_view(o, want) if tuple(c["nearest"]) not in blacklist]
             if not cands:
                 print(f"no ore in sight ({done} mined) at {pos(o)}")
                 return 0 if done else 3
@@ -107,13 +108,20 @@ def main(argv):
             print(f"approach: {res}")
         look_at(obs(), cell)
         r = act({"type": "dig", "x": cell[0], "y": cell[1], "z": cell[2]}, timeout=300)
-        out = str(r.get("result") or "")
+        out = res_text(r)   # "result" is just the queued "ok"; the task's words are in last_result
         print(f"{b['block']} {cell}: {out}")
-        if "error" in r or out.startswith("refused"):
+        if "error" in r or out.startswith("refused") or ("done" not in out and "cleared" not in out):
             print(f"giving up on that one: {out or r.get('error')}")
+            blacklist.add(cell)
             continue
         # the drop stays on the floor: stand on it
         act({"type": "go", "x": cell[0], "y": cell[1], "z": cell[2]}, timeout=600)
+        o = obs()
+        if any(tuple(x["nearest"]) == cell and x["block"] == b["block"]
+               for x in o.get("blocks_in_view", [])):
+            print(f"  still there after the dig -> skipping {cell} from now on")
+            blacklist.add(cell)
+            continue
         done += 1
         o = obs()
         if o["self"]["light"] <= 0:
