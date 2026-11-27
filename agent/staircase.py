@@ -3,7 +3,7 @@
 Uses only the honest API (same as the hc CLI). Stops when it sees danger or finds the target block."""
 import json, math, sys, urllib.request
 
-API = "http://127.0.0.1:7070"
+from hcapi import API  # which client? HC_AGENT (see hcapi.py)
 def get(p):
     with urllib.request.urlopen(API + p, timeout=60) as r: return json.load(r)
 def act(o):

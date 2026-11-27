@@ -20,7 +20,7 @@ import math
 import sys
 import urllib.request
 
-API = "http://127.0.0.1:7070"
+from hcapi import API  # which client? HC_AGENT (see hcapi.py)
 LOGS = ("jungle_log", "oak_log", "birch_log", "spruce_log", "dark_oak_log", "acacia_log",
         "mangrove_log", "cherry_log", "pale_oak_log")
 STONE = ("stone", "cobblestone", "andesite", "granite", "diorite", "tuff", "deepslate")

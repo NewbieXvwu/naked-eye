@@ -19,7 +19,7 @@ import urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from safety import stop_reason, near_water, res_text, hold_tool, close_screen  # noqa: E402
 
-API = "http://127.0.0.1:7070"
+from hcapi import API  # which client? HC_AGENT (see hcapi.py)
 DEFAULT_WANT = ("iron_ore", "deepslate_iron_ore", "coal_ore", "deepslate_coal_ore",
                 "copper_ore", "gold_ore", "redstone_ore", "lapis_ore")
 

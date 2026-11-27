@@ -9,7 +9,7 @@ import json, math, os, sys, urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from safety import stop_reason, LOW_HP  # noqa: E402  the rules every macro shares (see agent/safety.py)
 
-API = "http://127.0.0.1:7070"
+from hcapi import API  # which client? HC_AGENT (see hcapi.py)
 def get(p):
     with urllib.request.urlopen(API + p, timeout=60) as r: return json.load(r)
 def act(o):

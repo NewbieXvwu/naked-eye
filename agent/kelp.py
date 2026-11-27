@@ -7,7 +7,7 @@ dig to catch them. Air is checked every step: at 3 bubbles we surface.
 """
 import sys, json, time, urllib.request
 
-API = "http://127.0.0.1:7070"
+from hcapi import API  # which client? HC_AGENT (see hcapi.py)
 def call(p, o=None):
     d = json.dumps(o).encode() if o is not None else None
     r = urllib.request.urlopen(API + p, data=d, timeout=600)

@@ -3,7 +3,7 @@
    'is the way back known?  yes -> go.  no -> walk to the nearest unexplored opening, look around, ask again.'
 Usage: find_way.py MARK [max_rounds]"""
 import json, re, sys, urllib.request
-API = "http://127.0.0.1:7070"
+from hcapi import API  # which client? HC_AGENT (see hcapi.py)
 def get(p):
     with urllib.request.urlopen(API + p, timeout=120) as r: return json.load(r)
 def act(o):

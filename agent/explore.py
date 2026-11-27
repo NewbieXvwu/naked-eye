@@ -3,7 +3,7 @@
 Stops — and hands control back to the brain — on anything alarming (the game auto-pauses; we don't resume it).
 Usage: explore.py TARGET_SUBSTRING [max_rounds]"""
 import json, re, sys, urllib.request
-API = "http://127.0.0.1:7070"
+from hcapi import API  # which client? HC_AGENT (see hcapi.py)
 def get(p):
     with urllib.request.urlopen(API + p, timeout=120) as r: return json.load(r)
 def act(o):

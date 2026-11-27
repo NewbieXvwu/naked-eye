@@ -12,7 +12,7 @@ usage: agent/shelter.py [--force]   (exit 0 = capped, 2 = refused/aborted, 1 = f
 """
 import json, math, sys, urllib.request
 
-API = "http://127.0.0.1:7070"
+from hcapi import API  # which client? HC_AGENT (see hcapi.py)
 HOSTILES = {"skeleton", "zombie", "husk", "drowned", "spider", "cave_spider", "creeper", "witch",
             "enderman", "stray", "pillager", "ravager", "zoglin", "piglin", "hoglin", "phantom"}
 CAPS = ("dirt", "coarse_dirt", "rooted_dirt", "cobblestone", "cobbled_deepslate", "stone", "andesite",

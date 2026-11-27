@@ -17,7 +17,7 @@ import urllib.request
 
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 
-API = "http://127.0.0.1:7070"
+from hcapi import API  # which client? HC_AGENT (see hcapi.py)
 ORES = ["coal_ore", "deepslate_coal_ore", "iron_ore", "deepslate_iron_ore", "copper_ore",
         "deepslate_copper_ore", "gold_ore", "deepslate_gold_ore", "redstone_ore",
         "deepslate_redstone_ore", "lapis_ore", "deepslate_lapis_ore", "diamond_ore",
