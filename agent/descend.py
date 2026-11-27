@@ -95,9 +95,14 @@ def main(argv):
             return 2
         r = act({"type": "mine", "dir": direction, "steps": steps, "spiral": 2,
                  "torch_every": torch_every, "grab": grab, "wait": 1200, "resume": True})
-        res = r.get("observation", {}).get("control", {}).get("last_result") or ""
         o2 = r.get("observation", {})
-        why = stop_reason(o2, res, start_hp)
+        ctl = o2.get("control", {})
+        res = " ".join(str(x) for x in (ctl.get("last_result"), r.get("woke")) if x)
+        if r.get("woke"):
+            print("  woke:", r["woke"], flush=True)
+        # Hand the whole response to the shared rules: the alarm text lives in "woke", not "result".
+        # (Death #5: a "FALLING — LETHAL" wake was invisible here, so the script resumed and died.)
+        why = stop_reason(o2, r, start_hp)
         if why:
             print("stopping:", why)
             return 1 if why == "dead" else 2

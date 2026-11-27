@@ -227,12 +227,13 @@ MARK entrance: 17 m west (behind-left), same level — reachable (P1)
 
 云端那一局搬到这台 Mac 上，世界重开一档（旧的留在 `run/server/world-night1`）。本机已经有官方的 26.3，`setup.sh` 只做了硬链接（游戏本体、库、资源都没重下），`./setup.sh` 几秒跑完；`python3 tools/verify.py` 18/18 全过；`hc speed auto` 在这台 M 系列 Mac 上**稳到 10×**（2–10 都过），比云端 2 vCPU 那台（5×）快一倍。
 
-**四条命的死因（按机制分类）**
+**五条命的死因（按机制分类）**
 - 夜里空手被骷髅射死（20→18→13→0）：3 格洞挖下去了，人却没跟下去，挖出来的土落在洞底拿不到，封顶没有方块。→ `agent/shelter.py` 重写：每挖一格都核对自己在不在洞里，自己走进竖井、捡起掉落、按"头顶正上方"封，怪在 14 m 内拒绝开工；`hole.sh` 变成它的一行别名。
 - 挖竖井掉进 13 格深的洞（20 血→1 血），脚本无视告警把同一条 `mine` 又发一遍，被 15 m 外黑暗里的骷髅补了最后一箭。→ `agent/descend.py` 每次动作返回都先过 `stop_reason()`：死亡、≤14 血、掉血、摔伤、16 m 内有敌对生物、lava、被拒绝，命中即停；竖井撞到填不上的空洞也停（不再硬往下）。测试 `agent/tests/test_descend.py`。
 - 日出开封顶时僵尸就站在洞口 5 m 内（怪会站在封顶的土块上），空手 6 血，跑不过。→ `agent/shelter.py --out`：12 m 内有怪、或血 ≤6，就不开封顶；`agent/gather.py` 也接上了同一个护栏（掉血、低血、12 m 内有怪就停），它在死前那 10 秒里一直硬砍树（18→8 血）。护栏集中在 `agent/safety.py`，测试 `agent/tests/test_safety.py`。
 
 - 在出生点的洞穴顶盖上继续向下挖：`hc stairs north 7` 第一步就挖穿了顶盖，从 y135 掉到 y100，20 血掉到 0（第四命）。验尸报告显示死亡点下方 30-50 m 的洞里全是苦力怕、僵尸、骷髅。→ 新增 `agent/probe.py`：先挖掉眼前一格，低头看 crosshair——有方块才算有底，"nothing" 就是深坑；打法手册写死「出生点附近不向下挖」。测试 `agent/tests/test_probe.py`。
+- 又在出生点山坡 (73,134,-8) 往南挖台阶去够 y129 的铁矿，挖穿同一片洞顶，从 y134 掉到 y106 摔死（第五命）。这次 mod 已经喊了 `⏸ PAUSED: FALLING … LETHAL`，但 `agent/descend.py` 只读动作回包的 `result` 字段（那里还是上一件 task 的旧话），警报在 `woke` 字段里，于是脚本没停；随后一条"看看情况"的 `wait` 把世界解冻，人摔到地上。→ `agent/safety.py` 新增 `res_text()`：把 `woke` 和 `result` 并成一段文字再判断，FALLING/LETHAL 一律立刻停手；`descend.py` 把整条回包交给 `stop_reason()`；补 3 个测试（`agent/tests/test_safety.py`）。教训同时写进打法手册：**没有水桶在快捷栏，就不许下挖**。
 
 **顺手修掉的工具 bug**：`tools/review.py` 以前用录像元数据的 `epoch_time_ms` 找旁路日志，那是录像**打包时**写的，长局里晚好几分钟，于是 `open` 说找不到日志、`deaths`/`report` 静默。现在先用录像目录名当开局时间（`YYYY-MM-DD--HH-MM-SS`，本地时间）。
 

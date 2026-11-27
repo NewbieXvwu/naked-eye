@@ -70,3 +70,26 @@ def test_cap_stays_on_at_six_hp_in_the_open():
 
 def test_cap_comes_off_when_the_coast_is_clear():
     assert shelter.exit_reason(obs(20, entities=[mob("chicken", 3)])) is None
+
+
+# --- death #5: the alarm that says LETHAL -----------------------------------------------------
+
+def test_a_falling_wake_stops_the_script_even_with_full_hp():
+    woke = "PAUSED: FALLING (20 m so far, ground 37 m below) — LETHAL: the landing will kill me"
+    why = stop_reason(obs(20), {"result": "ok", "woke": woke})
+    assert why and "FALLING" in why
+
+
+def test_the_wake_is_read_from_the_response_not_the_stale_result():
+    # exactly the shape sent back by /act: the task text is the previous task's, the alarm is in "woke"
+    res = {"result": "ok",
+           "woke": "PAUSED: FALLING (20 m so far, ground 37 m below) — LETHAL",
+           "observation": {"control": {"last_result": "baritone go 73, 134, -8 -> arrived"},
+                           "self": {"health": 20, "dead": False}, "entities": []}}
+    assert "FALLING" in stop_reason(obs(20), res)
+
+
+def test_a_quiet_response_does_not_stop_anything():
+    res = {"result": "ok", "woke": None,
+           "observation": {"control": {"last_result": "staircase down south x8 -> done"}}}
+    assert stop_reason(obs(20), res) is None
