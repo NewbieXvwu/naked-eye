@@ -37,17 +37,26 @@ def main(block, item, want, max_steps=30):
             continue
         targets = [b for b in o["blocks_in_view"] if block in b["block"] and b["dist"] < 4.3]
         if not targets:
-            # look around a little to find more
-            r = act({"type": "look_around", "pitch": 35, "wait": 160})
-            o = r["observation"]
+            # look around a little to find more (the sweep ends looking up 40°, so level off before searching —
+            # otherwise tree trunks on the horizon are all out of view and this says "nothing in sight")
+            act({"type": "look_around", "pitch": 35, "wait": 160})
+            o = get("/observe")
+            act({"type": "look", "yaw": o["self"]["yaw"], "pitch": 0, "wait": 8})
+            o = get("/observe")
             targets = [b for b in o["blocks_in_view"] if block in b["block"] and b["dist"] < 4.3]
             if not targets:
-                far = [b for b in o["blocks_in_view"] if block in b["block"] and b["dist"] < 24]
+                # a trunk I already failed to reach (Baritone "no known route") must not be chosen again: it ate
+                # minutes of wall-clock time in a forest where two trees grew into each other
+                far = [b for b in o["blocks_in_view"] if block in b["block"] and b["dist"] < 24
+                       and tuple(b["nearest"]) not in unreachable]
                 if not far:
-                    print(f"step {step}: no {block} in sight; have {have}"); return
+                    print(f"step {step}: no reachable {block} in sight; have {have}"); return
                 x, y, z = far[0]["nearest"]
                 r = act({"type": "go", "near": True, "x": x, "y": y, "z": z, "wait": 600})
-                print(f"step {step}: approach {block} at {far[0]['nearest']} -> {r['observation']['control']['last_result']}")
+                res = r['observation']['control']['last_result']
+                print(f"step {step}: approach {block} at {far[0]['nearest']} -> {res}")
+                if "stopped" in res or "no known route" in res:
+                    unreachable.add((x, y, z))
                 continue
         x, y, z = targets[0]["nearest"]
         r = act({"type": "dig", "x": x, "y": y, "z": z, "wait": 300})

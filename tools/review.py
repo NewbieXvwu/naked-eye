@@ -17,7 +17,7 @@ The recording (ServerReplay) holds every packet the agent's client received; the
 The review client is fed the packets, stands exactly where the agent stood and looks where it looked, and runs the
 same perception code — so "what could it see" is recomputed, not remembered.
 """
-import glob, json, os, shutil, subprocess, sys, threading, time, urllib.request, zipfile
+import glob, json, os, re, shutil, subprocess, sys, threading, time, urllib.request, zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
@@ -45,14 +45,21 @@ def flightlog_for(replay):
     """that agent's flight log whose session started closest to the recording's start (the first agent's client lives
     in run/client/, the others added with ./add_agent.sh in run/client-NAME/)"""
     with zipfile.ZipFile(replay) as z:
-        start = json.loads(z.read("arcade_replay_meta.json")).get("epoch_time_ms", 0)
+        meta = json.loads(z.read("arcade_replay_meta.json"))
+    # epoch_time_ms is written when the server *saves* the recording (i.e. at the end of the session, an hour later
+    # in a long game), so it is not the start. The recording's own name (YYYY-MM-DD--HH-MM-SS, local time) is.
+    starts = [meta.get("epoch_time_ms", 0)]
+    m = re.search(r"(\d{4})-(\d{2})-(\d{2})--(\d{2})-(\d{2})-(\d{2})", os.path.basename(replay.rstrip("/")))
+    if m:
+        starts.append(int(time.mktime(tuple(int(x) for x in m.groups()) + (0, 0, -1)) * 1000))
     name = agent_of(replay)
     dirs = [os.path.join(ROOT, "run", "client-" + name)] + ([os.path.join(ROOT, "run", "client")] if name == "Agent" else [])
     best = None
     for f in (f for d in dirs for f in glob.glob(os.path.join(d, "flightlog", "*.jsonl"))):
         try: w = json.loads(open(f).readline())["w"]
         except Exception: continue
-        if best is None or abs(w - start) < best[0]: best = (abs(w - start), f)
+        d = min(abs(w - s) for s in starts if s)
+        if best is None or d < best[0]: best = (d, f)
     return best[1] if best and best[0] < 120_000 else None
 
 
