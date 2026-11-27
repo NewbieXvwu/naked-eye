@@ -10,6 +10,8 @@ dependencies {
     implementation "net.fabricmc:fabric-loader:${project.loader_version}"
     implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
     // Honest fork of Baritone (pathing only through the agent's memory); optional at runtime
+    // the pause/watch mod ships alongside (it carries the commentary channel)
+    compileOnly files("../../mods/honest-pause-1.0.0.jar")
     if (file("libs/baritone-honest.jar").exists()) {
         compileOnly files("libs/baritone-honest.jar")
     }

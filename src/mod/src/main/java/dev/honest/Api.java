@@ -35,7 +35,10 @@ public final class Api {
 
     public static void start() throws IOException {
         HttpServer agent = HttpServer.create(new InetSocketAddress("127.0.0.1", PORT), 0);
-        agent.createContext("/observe", ex -> handle(ex, () -> observe(query(ex))));
+        agent.createContext("/observe", ex -> handle(ex, () -> {
+            JsonObject o = observe(query(ex));
+            JsonObject l = new JsonObject(); l.add("o", o); FlightLog.write("observe", l);   // exactly what the brain was shown
+            return o; }));
         agent.createContext("/map", ex -> handle(ex, () -> {
             int r = Integer.parseInt(query(ex).getOrDefault("r", "12"));
             JsonObject j = new JsonObject();
@@ -164,7 +167,12 @@ public final class Api {
 
     static JsonObject act(JsonObject a) {
         Pause.actsInFlight.incrementAndGet();   // the world runs while an action is in flight, and freezes once none is
-        try { return act0(a); } finally { Pause.lastActEndMs = System.currentTimeMillis(); Pause.actsInFlight.decrementAndGet(); }
+        JsonObject res = null;
+        try { return res = act0(a); }
+        finally {
+            Pause.lastActEndMs = System.currentTimeMillis(); Pause.actsInFlight.decrementAndGet();
+            JsonObject l = new JsonObject(); l.add("req", a); if (res != null) l.add("res", res); FlightLog.write("act", l);
+        }
     }
 
     static JsonObject act0(JsonObject a) {
@@ -177,7 +185,7 @@ public final class Api {
             if (pl == null) return "not in world";
             // any decision from the brain = un-pause (like closing the ESC menu); "pause" itself and pure policy changes don't
             boolean keep = a.has("keep_paused") && a.get("keep_paused").getAsBoolean();   // frame-by-frame play
-            if (Pause.paused != null && !keep && !type.equals("pause") && !type.equals("pause_policy")) {
+            if (Pause.paused != null && !keep && !type.equals("pause") && !type.equals("pause_policy") && !type.equals("note")) {
                 // only a deliberate decision un-pauses; a script blindly carrying on with its plan must not
                 // (it happened: a wood-gathering script kept clicking through the pause while a skeleton shot me dead)
                 // a thinking pause is lifted by any action at all; an ALARM pause only by a deliberate one
@@ -186,6 +194,11 @@ public final class Api {
                 Pause.resume("brain decided: " + type);
             }
             switch (type) {
+                case "note" -> {   // the brain's commentary: how it's going, what's next (log, watchers, replay)
+                    String t = a.get("text").getAsString();
+                    Events.note("note", t);
+                    try { dev.honest.pause.Note.send(t); } catch (Throwable ignored) {}
+                }
                 case "pause" -> Pause.pause(a.has("why") ? a.get("why").getAsString() : "I want to think", "manual");
                 case "pause_policy" -> {
                     if (a.has("allow")) Pause.allow = a.get("allow").getAsBoolean();

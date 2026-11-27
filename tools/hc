@@ -23,6 +23,7 @@
   hc tunnel DIR N [a,b]       same, flat 1x2 tunnel (branch mining)
   hc upstairs DIR N [a,b]     dig a staircase UP (enclosed way out of a hole)
                               4th arg: ores to mine on the way without stopping, e.g. coal_ore,iron_ore
+  hc note TEXT                commentary for the record (and anyone watching): how it's going, what's next
   hc watch [sec]              keep waiting on the current task; returns when it ends or on alarm
   hc goy Y [a,b]              get to Y level, digging stairs through assumed rock; stop if a/b seen
   hc go X Y Z [a,b]           (optional 4th arg: stop as soon as a block containing a or b is in view)
@@ -106,8 +107,20 @@ def fmt(o):
     if "cursor" in o: open(CUR, "w").write(str(o["cursor"]))
     print("\n".join(out))
 
+NOTE_NAG = 12   # actions without a word of commentary before hc reminds you
+
+def nudge(kind):
+    """count actions since the last `hc note`; after NOTE_NAG of them, ask for a line of commentary"""
+    if os.environ.get("HC_SCRIPT") == "1": return
+    f = os.path.join(os.path.dirname(CUR), ".hc_since_note")
+    n = 0 if kind == "note" else (int(open(f).read() or 0) if os.path.exists(f) else 0) + 1
+    open(f, "w").write(str(n))
+    if n and n % NOTE_NAG == 0:
+        print(f"📝 {n} actions since your last note — one line please: hc note \"how it's going, what's next\"")
+
 def act(obj, wait=400):
     obj.setdefault("wait", wait); obj["cursor"] = cursor()
+    nudge(obj.get("type"))
     # me typing a command = a decision, so it resumes a paused game; scripts set HC_SCRIPT=1 and get refused instead
     if os.environ.get("HC_SCRIPT") != "1": obj["resume"] = True
     if os.environ.get("HC_FRAME") == "1":   # frame-by-frame play: queue the input, keep the world frozen, `hc step N` runs it
@@ -221,6 +234,9 @@ def main(a):
     elif c == "stop": act({"type": "stop"}, 2)
     elif c == "wait": act({"type": "wait"}, int(x[0]) if x else 20)
     elif c == "say": act({"type": "chat", "text": " ".join(x)}, 10)
+    elif c == "note":   # commentary, like subtitles: how it's going and what I'm about to do (doesn't unpause)
+        if not x: print('usage: hc note "how it\'s going, what\'s next"'); return
+        act({"type": "note", "text": " ".join(x)}, 0)
     elif c == "respawn": act({"type": "respawn"}, 40)
     elif c == "status": print(json.dumps(get("/status"), ensure_ascii=False))
     else: print("unknown command; hc help")

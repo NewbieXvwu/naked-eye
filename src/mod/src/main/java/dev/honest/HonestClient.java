@@ -44,6 +44,7 @@ public class HonestClient implements ClientModInitializer {
             if (!frozen || !Pause.allow) Controller.tick(mc); else Controller.releaseKeys(mc);   // (pausing off: not my pause)
             try { ArrowLog.tick(mc); } catch (Throwable t) { LOG.warn("[honest] arrow log failed", t); }
             try { Pause.tick(mc); } catch (Throwable t) { LOG.warn("[honest] pause check failed", t); }
+            try { FlightLog.tick(mc); } catch (Throwable t) { LOG.warn("[honest] flight log failed", t); }
             // (frozen: nothing in the world can change, so the eyes rest — that was half a CPU core while thinking)
             if (++ticks % 4 == 0 && mc.player != null && mc.level != null && !frozen) {
                 try { Perception.sweep(mc); } catch (Throwable t) { LOG.warn("[honest] sweep failed", t); }
@@ -56,7 +57,7 @@ public class HonestClient implements ClientModInitializer {
         java.nio.file.Path mem = java.nio.file.Path.of("honest_memory.bin");
         Perception.MAP.load(mem);
         ClientTickEvents.END_CLIENT_TICK.register(mc -> { if (ticks % 1200 == 0) Perception.MAP.save(mem); });
-        ClientLifecycleEvents.CLIENT_STOPPING.register(mc -> Perception.MAP.save(mem));
+        ClientLifecycleEvents.CLIENT_STOPPING.register(mc -> { Perception.MAP.save(mem); FlightLog.close(); });
         ClientReceiveMessageEvents.GAME.register((msg, overlay) -> { if (!overlay) Events.onChat(msg, "game_message"); });
         ClientReceiveMessageEvents.CHAT.register((msg, signed, sender, params, ts) -> Events.onChat(msg, "chat"));
     }

@@ -26,6 +26,7 @@ public final class Events {
     static synchronized void push(JsonObject o) {
         o.addProperty("seq", ++seq);
         LOG.addLast(o);
+        FlightLog.write("event", o.deepCopy());
         while (LOG.size() > 200) LOG.removeFirst();
     }
 
@@ -43,7 +44,7 @@ public final class Events {
         for (var it = LOG.descendingIterator(); it.hasNext(); ) {
             JsonObject o = it.next();
             if (!o.has("tick")) continue;
-            if (pl == null || pl.tickCount - o.get("tick").getAsLong() > ticks) break;
+            if (pl == null || HonestClient.ticks - o.get("tick").getAsLong() > ticks) break;
             if (o.has("subtitle") && o.get("subtitle").getAsString().contains(what)) return o;
         }
         return null;
@@ -52,7 +53,7 @@ public final class Events {
         for (var it = LOG.descendingIterator(); it.hasNext(); ) {
             JsonObject o = it.next();
             var pl = net.minecraft.client.Minecraft.getInstance().player;
-            if (pl == null || !o.has("tick") || pl.tickCount - o.get("tick").getAsLong() > ticks) break;
+            if (pl == null || !o.has("tick") || HonestClient.ticks - o.get("tick").getAsLong() > ticks) break;
             if (o.has("subtitle") && o.get("subtitle").getAsString().contains(what)) return true;
         }
         return false;
@@ -78,7 +79,7 @@ public final class Events {
             o.addProperty("direction", dir8(bearing));
             o.addProperty("loudness", d < range * 0.33 ? "close" : d < range * 0.66 ? "nearby" : "faint");
         }
-        o.addProperty("tick", pl.tickCount);
+        o.addProperty("tick", HonestClient.ticks);   // (not pl.tickCount: that restarts at 0 on respawn)
         if (sub.getString().contains("Creeper hisses") && !s.isRelative()) { lastHiss = new Vec3(s.getX(), s.getY(), s.getZ()); lastHissTick = HonestClient.ticks; }
         push(o);
     }

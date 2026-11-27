@@ -13,7 +13,8 @@
   "depends": {
     "fabricloader": ">=0.16",
     "minecraft": "26.3",
-    "fabric-api": "*"
+    "fabric-api": "*",
+    "honest_pause": "*"
   },
   "mixins": [
     "honest_client.mixins.json"

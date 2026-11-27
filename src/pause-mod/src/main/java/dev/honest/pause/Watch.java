@@ -59,6 +59,10 @@ public final class Watch implements ModInitializer {
             }
         } catch (Exception ignored) {}
 
+        // the agents' commentary channel (registered on both sides: this mod is on the client too)
+        net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry.serverboundPlay().register(Note.TYPE, Note.CODEC);
+        net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.registerGlobalReceiver(Note.TYPE, (n, ctx) -> Note.onServer(ctx.player(), n.text()));
+
         ServerPlayConnectionEvents.JOIN.register((h, sender, server) -> {
             ServerPlayer p = h.player;
             if (isAgent(p)) return;

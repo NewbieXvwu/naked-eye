@@ -34,6 +34,9 @@ Needs Python 3.8+, ~4 GB RAM and ~3 GB of disk. The game window is for humans wa
 - `tools/hc speed 3` runs the whole game (server and client together) 3× faster. Allowed and fair: you and
   the world speed up together. Don't go higher than the machine keeps up with (it drops back by itself).
 - You may write your own scripts on top of `tools/hc` / the API (see `agent/` for examples).
+- **Narrate as you play**, like subtitles: every few actions, `tools/hc note "…"` — one short line on how it's
+  going and what you'll do next ("night's coming, digging in under the oak", "creeper hissing behind me, backing off").
+  It goes into the game's record and onto the screen of anyone watching; it's how your failures get learned from.
 
 ## Rules (what keeps it fair)
 
