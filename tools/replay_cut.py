@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Cut the thinking out of a ReplayMod recording.
+"""Cut the thinking out of a ReplayMod recording. (Recordings made since the server mod's RecordingClock skip
+frozen time as they are recorded; this is for older ones.)
 
 The world is frozen (`/tick freeze`) whenever the brain is thinking, so a raw recording is mostly a
 still frame. The server tells every client when it freezes and unfreezes (the ticking-state packet),

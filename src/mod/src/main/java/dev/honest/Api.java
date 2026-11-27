@@ -81,7 +81,13 @@ public final class Api {
             return j;
         }));
         agent.createContext("/act", ex -> handle(ex, () -> act(JsonParser.parseString(body(ex)).getAsJsonObject())));
-        agent.createContext("/status", ex -> handle(ex, () -> onClient(Controller::status)));
+        agent.createContext("/status", ex -> handle(ex, () -> onClient(() -> {
+            JsonObject j = Controller.status();
+            var lvl = Minecraft.getInstance().level;
+            j.addProperty("client_ticks", HonestClient.ticks);           // for measuring how fast this machine keeps up
+            if (lvl != null) j.addProperty("game_time", lvl.getGameTime());
+            if (lvl != null) { j.addProperty("tick_rate", lvl.tickRateManager().tickrate()); j.addProperty("frozen", !lvl.tickRateManager().runsNormally()); }
+            return j; })));
         // for the human watching, not for the agent (it tells nothing about the world): /window?show=1|0
         agent.createContext("/window", ex -> handle(ex, () -> onClient(() -> {
             String v = query(ex).get("show"); JsonObject j = new JsonObject();
@@ -177,6 +183,7 @@ public final class Api {
 
     static JsonObject act0(JsonObject a) {
         String type = a.get("type").getAsString();
+        if (Review.ON) { JsonObject r = new JsonObject(); r.addProperty("result", "refused: review mode (this client is watching a recording)"); return r; }
         if (type.equals("step")) return step(a);
         Minecraft mc = Minecraft.getInstance();
         JsonObject res = new JsonObject();
@@ -315,27 +322,45 @@ public final class Api {
         int waitTicks = a.has("wait") ? a.get("wait").getAsInt() : 0;
         if (waitTicks > 0) {
             // counted in game ticks, not wall time: under `/tick rate 60` a 400-tick wait is 400 ticks, not 1200
-            int untilTick = onClient(() -> HonestClient.ticks) + Math.min(waitTicks, 1200);
-            long until = System.currentTimeMillis() + Math.min(waitTicks, 1200) * 50L + 10_000;   // (safety net if the client stalls)
             boolean waitForTask = (!type.equals("wait") && !type.equals("hold")) || a.has("until_idle");
-            float[] start = onClient(() -> { var p = Minecraft.getInstance().player; return p == null ? new float[]{0, 0} : new float[]{p.getHealth(), p.getAirSupply()}; });
-            while (System.currentTimeMillis() < until && onClient(() -> HonestClient.ticks) < untilTick) {
-                if (waitForTask && onClient(() -> Controller.task == null)) break;
-                // wake the brain early when something alarming happens, instead of letting it sleep through it
-                String alarm = onClient(() -> {
-                    var p = Minecraft.getInstance().player;
-                    if (p == null) return null;
-                    if (p.getHealth() < start[0]) return String.format("hurt (%.0f -> %.0f HP)", start[0], p.getHealth()) + hurtCause(p);
-                    if (p.getAirSupply() < Math.min(start[1], p.getMaxAirSupply()) - 60) return "running out of air";
-                    return null;
-                });
-                if (alarm == null && Pause.paused != null) alarm = "PAUSED: " + Pause.paused;
-                if (alarm != null) { res.addProperty("woke", alarm); break; }
-                sleep(50);
-            }
+            // checked inside the game tick itself (Api.tickWaits), so the brain is woken on the very tick something
+            // happens, at any game speed — not on a wall-clock poll that gets coarser the faster the game runs
+            Wait w = onClient(() -> {
+                var p = Minecraft.getInstance().player;
+                Wait x = new Wait(HonestClient.ticks + Math.min(waitTicks, 1200), waitForTask,
+                        p == null ? 0 : p.getHealth(), p == null ? 0 : p.getAirSupply());
+                WAITS.add(x); return x;
+            });
+            try { w.latch.await(Math.min(waitTicks, 1200) * 50L + 10_000, java.util.concurrent.TimeUnit.MILLISECONDS); }   // (safety net if the client stalls)
+            catch (InterruptedException ignored) {}
+            WAITS.remove(w);
+            if (w.woke != null) res.addProperty("woke", w.woke);
             res.add("observation", observe(Map.of("cursor", a.has("cursor") ? a.get("cursor").getAsString() : "0")));
         }
         return res;
+    }
+
+    /** a request waiting for its action: resolved by the game tick (task done, N ticks passed, or an alarm) */
+    static final class Wait {
+        final int untilTick; final boolean forTask; final float hp0; final int air0;
+        volatile String woke; final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+        Wait(int u, boolean t, float hp, int air) { untilTick = u; forTask = t; hp0 = hp; air0 = air; }
+    }
+    static final java.util.List<Wait> WAITS = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    /** called at the end of every client tick */
+    static void tickWaits(Minecraft mc) {
+        if (WAITS.isEmpty()) return;
+        var p = mc.player;
+        for (Wait w : WAITS) {
+            if (w.latch.getCount() == 0) continue;
+            String alarm = null;
+            if (p != null && p.getHealth() < w.hp0) alarm = String.format("hurt (%.0f -> %.0f HP)", w.hp0, p.getHealth()) + hurtCause(p);
+            else if (p != null && p.getAirSupply() < Math.min(w.air0, p.getMaxAirSupply()) - 60) alarm = "running out of air";
+            else if (Pause.paused != null && !"idle".equals(Pause.pausedKind)) alarm = "PAUSED: " + Pause.paused;
+            if (alarm != null) w.woke = alarm;
+            if (alarm != null || HonestClient.ticks >= w.untilTick || (w.forTask && Controller.task == null)) w.latch.countDown();
+        }
     }
 
     static JsonObject raw() {

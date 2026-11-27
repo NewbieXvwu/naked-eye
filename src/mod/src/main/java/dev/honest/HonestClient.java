@@ -35,16 +35,19 @@ public class HonestClient implements ClientModInitializer {
     public void onInitializeClient() {
         LOG.info("[honest] client mod loaded");
         try { Api.start(); } catch (Exception e) { LOG.error("[honest] failed to start API", e); }
+        Review.load();
 
         ClientTickEvents.END_CLIENT_TICK.register(mc -> {
             // frozen world = paused game: hands off the controls (you can't play from the ESC menu), eyes still work
             // once in the world, start hidden unless asked to show (honest.show): saves power, the agent doesn't need it
             if (!startVisibilityDone && mc.player != null) { startVisibilityDone = true; if (!Boolean.getBoolean("honest.show")) setShown(false); }
             boolean frozen = mc.level != null && !mc.level.tickRateManager().runsNormally();
-            if (!frozen || !Pause.allow) Controller.tick(mc); else Controller.releaseKeys(mc);   // (pausing off: not my pause)
+            try { Review.tick(mc); } catch (Throwable t) { LOG.warn("[honest] review pose failed", t); }   // (before the eyes look)
+            if (Review.ON) {} else if (!frozen || !Pause.allow) Controller.tick(mc); else Controller.releaseKeys(mc);   // (pausing off: not my pause)
             try { ArrowLog.tick(mc); } catch (Throwable t) { LOG.warn("[honest] arrow log failed", t); }
             try { Pause.tick(mc); } catch (Throwable t) { LOG.warn("[honest] pause check failed", t); }
-            try { FlightLog.tick(mc); } catch (Throwable t) { LOG.warn("[honest] flight log failed", t); }
+            if (!Review.ON) try { FlightLog.tick(mc); } catch (Throwable t) { LOG.warn("[honest] flight log failed", t); }
+            try { Api.tickWaits(mc); } catch (Throwable t) { LOG.warn("[honest] wait check failed", t); }   // wakes waiting requests
             // (frozen: nothing in the world can change, so the eyes rest — that was half a CPU core while thinking)
             if (++ticks % 4 == 0 && mc.player != null && mc.level != null && !frozen) {
                 try { Perception.sweep(mc); } catch (Throwable t) { LOG.warn("[honest] sweep failed", t); }

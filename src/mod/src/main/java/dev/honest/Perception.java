@@ -278,7 +278,7 @@ public final class Perception {
 
         List<JsonObject> out = new ArrayList<>();
         for (Entity e : lvl.entitiesForRendering()) {
-            if (e == pl) continue;
+            if (e == pl || Review.isMe(mc, e)) continue;   // (in review: the agent's own body in the replay)
             AABB bb = e.getBoundingBox();
             Vec3 center = bb.getCenter();
             double dist = center.distanceTo(eye);

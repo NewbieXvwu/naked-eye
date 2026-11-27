@@ -31,8 +31,10 @@ Needs Python 3.8+, ~4 GB RAM and ~3 GB of disk. The game window is for humans wa
   buried, pouring a water bucket when in lava, backing off a swelling creeper, hitting back when hit.
 - When something alarming happens mid-action (hurt, a hostile mob close, on fire), the world pauses and
   the action is interrupted with a `PAUSED` / `woke early` reason. Look, decide, act.
-- `tools/hc speed 3` runs the whole game (server and client together) 3× faster. Allowed and fair: you and
-  the world speed up together. Don't go higher than the machine keeps up with (it drops back by itself).
+- **Speed up.** Right after `./start.sh`, run `tools/hc speed auto`: it finds the fastest speed this machine keeps
+  up with (server and client together) and uses it. It's fair: you and the world speed up together, the world is
+  frozen while you think anyway, and alarms and reflexes are checked every game tick at any speed. If the machine
+  ever falls behind, the game drops back to 1× by itself — run `tools/hc speed auto` again later.
 - You may write your own scripts on top of `tools/hc` / the API (see `agent/` for examples).
 - **Narrate as you play**, like subtitles: every few actions, `tools/hc note "…"` — one short line on how it's
   going and what you'll do next ("night's coming, digging in under the oak", "creeper hissing behind me, backing off").
@@ -47,9 +49,11 @@ Not allowed — these are the experimenter's tools and would be cheating:
 - the experimenter API on port 7071 (ground truth; switched off when started with `HONEST_DEBUG=0`)
 - reading or editing world or server files (`run/server/`), the client's memory files, or the seed
 - changing the mods, the configs or the launcher
+- `tools/review.py` while a game is on (it shows the truth about the world: it's for reviewing a game afterwards)
 
-Every session is recorded (`run/server/recordings/`, viewable in ReplayMod; `tools/replay_cut.py`
-removes the frozen thinking time), and the server log keeps every command that was run.
+Every session is recorded (`run/server/recordings/`, viewable in ReplayMod; the time the world stood frozen is
+left out of the replay's clock, while everything that happened is kept), the client keeps a flight log of every
+request and observation, and the server log keeps every command that was run.
 
 ## Files
 

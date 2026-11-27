@@ -81,6 +81,7 @@ public final class Watch implements ModInitializer {
             return true;
         });
         ServerTickEvents.END_SERVER_TICK.register(Watch::tick);
+        ServerTickEvents.END_SERVER_TICK.register(RecordingClock::tick);
         CommandRegistrationCallback.EVENT.register((d, ctx, env) -> d.register(Commands.literal("watch")
                 .executes(c -> watch(c.getSource().getPlayerOrException(), null))
                 .then(Commands.argument("agent", StringArgumentType.word())

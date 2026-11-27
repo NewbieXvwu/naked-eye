@@ -265,12 +265,14 @@ def client():
            "-Dhonest.headless=" + os.environ.get("HONEST_HEADLESS", "true" if no_screen(osn) else "false"),
            "-Dhonest.show=" + ("true" if os.environ.get("HONEST_SHOW") == "1" else "false"),
            "-Dhonest.port=" + os.environ.get("HONEST_PORT", "7070"),
-           "-Dhonest.pause=" + ("false" if os.environ.get("HONEST_PAUSE") == "0" else "true"),
+           "-Dhonest.pause=" + ("false" if os.environ.get("HONEST_PAUSE") == "0" or os.environ.get("HONEST_REVIEW") else "true"),
+           "-Dhonest.review=" + ("true" if os.environ.get("HONEST_REVIEW") else "false"),
+           "-Dhonest.review.flightlog=" + os.environ.get("HONEST_REVIEW_FLIGHTLOG", ""),
            "-Dhonest.rcon.pass=" + rcon_password(os.path.join(RUN, "server")) if os.path.exists(os.path.join(RUN, "server", "server.properties")) else "-Dhonest.rcon.pass=",
            "-Dhonest.debug=" + ("false" if os.environ.get("HONEST_DEBUG") == "0" else "true")] + os.environ.get("HONEST_JAVA_OPTS", "").split() + jvm
     game = ["--username", name, "--version", MC, "--gameDir", gd, "--assetsDir", os.path.join(CACHE, "mc", "assets"),
             "--assetIndex", v["assetIndex"]["id"], "--uuid", str(uuid.uuid3(uuid.NAMESPACE_DNS, "Agent")), "--accessToken", "0",
-            "--versionType", "release", "--quickPlayMultiplayer", "127.0.0.1:25565", "--width", "1280", "--height", "720"]
+            "--versionType", "release", "--quickPlayMultiplayer", os.environ.get("HONEST_SERVER", "127.0.0.1:25565"), "--width", "1280", "--height", "720"]
     env = dict(os.environ)
     if no_screen(osn):
         # no screen: SDL's offscreen driver + Mesa's surfaceless EGL + llvmpipe software GL; no sound device

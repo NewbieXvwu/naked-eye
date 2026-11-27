@@ -115,8 +115,10 @@ public final class Pause {
         float got = (HonestClient.ticks - guardTicks) * 1000f / (now - guardMs);
         guardMs = now; guardTicks = HonestClient.ticks;
         if (want > 21 && got < want * 0.85f) {
-            Events.note("pause", String.format(Locale.ROOT, "fast-forward off: the world ran at %.0f tps but I only managed %.0f", want, got));
-            IO.submit(() -> rcon("tick rate 20"));
+            // step down to what this machine did manage (whole multiples of 20), rather than all the way to 1x
+            int next = Math.max(20, (int) (got / 20) * 20 >= want ? (int) want - 20 : (int) (got / 20) * 20);
+            Events.note("pause", String.format(Locale.ROOT, "fast-forward %.0fx -> %dx: the world ran at %.0f tps but I only managed %.0f", want / 20, next / 20, want, got));
+            IO.submit(() -> rcon("tick rate " + next));
         }
     }
 

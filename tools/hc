@@ -7,7 +7,7 @@
   hc go X Y Z                 walk there with (honest) Baritone over remembered terrain
   hc near X Y Z               walk until standing next to that block (Baritone)
   hc pause [on|off]           pause the world to think / allow or forbid automatic pausing on alarms
-  hc speed [N]                fast-forward everything N times (server and client together; the client must keep up)
+  hc speed [N|auto]           fast-forward everything N times (server and client together); auto = the fastest this machine keeps up
   hc pause idle on|off        freeze the world whenever nothing is running (default on: the world waits while I think)
   hc cave                     places I know nearby as a graph: walk / one-way drops / climbs, unexplored openings, marks
   hc recall BLOCK             where do I remember seeing it (lava, water, iron_ore…), nearest first
@@ -130,6 +130,25 @@ def act(obj, wait=400):
     if r.get("woke"): print("⚠️  woke early:", r["woke"])
     if "observation" in r: fmt(r["observation"])
 
+def speed_auto(run):
+    """Try 2x, 3x, 4x ... with the world running (I just stand and wait ~5 s of game time at each), time it, and
+    settle on the fastest speed this machine really keeps up with (>= 95%)."""
+    import time
+    def timed(n):   # wall seconds for 100*n game ticks at n x (5 s of game time), minus the fixed cost of an action
+        run([f"tick rate {20 * n}"]); t0 = time.time()
+        post({"type": "wait", "wait": 100 * n, "resume": True})
+        return time.time() - t0
+    overhead = max(0.0, timed(1) - 5.0)
+    best = 1
+    for n in (2, 3, 4, 5, 6, 8, 10):
+        got = 100 * n / max(0.01, timed(n) - overhead)
+        ok = got >= 0.95 * 20 * n
+        print(f"  {n}x: wanted {20 * n} ticks/s, got {got:.0f} — {'ok' if ok else 'too fast for this machine'}")
+        if not ok: break
+        best = n
+    run([f"tick rate {20 * best}"])
+    print(f"speed set to {best}x (if the machine ever falls behind, the game drops back to 1x by itself)")
+
 def main(a):
     if not a or a[0] in ("-h", "--help", "help"): print(__doc__); return
     c, x = a[0], a[1:]
@@ -154,8 +173,9 @@ def main(a):
                 if r.get("woke"): print("⚠️  woke early:", r["woke"])
                 fmt(r["observation"]); return
         fmt(get(f"/observe?cursor={cursor()}"))
-    elif c == "speed":   # hc speed 3  = the whole game (server AND this client) at 3x; the client must keep pace
+    elif c == "speed":   # hc speed 3  = the whole game (server AND this client) at 3x; hc speed auto = the fastest that keeps up
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); from rcon import run
+        if x and x[0] == "auto": return speed_auto(run)
         print(run([f"tick rate {round(20 * float(x[0]))}"])[0] if x else run(["tick query"])[0])
     elif c == "pause":   # hc pause on|off  (allow automatic pausing)   |   hc pause  (pause now to think)
         if x and x[0] in ("on", "off"): act({"type": "pause_policy", "allow": x[0] == "on"}, 2)

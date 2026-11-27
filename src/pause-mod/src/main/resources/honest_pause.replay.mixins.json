@@ -1,0 +1,7 @@
+{
+  "required": false,
+  "package": "dev.honest.pause.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "server": [ "ReplayPauseMixin" ],
+  "injectors": { "defaultRequire": 0 }
+}
