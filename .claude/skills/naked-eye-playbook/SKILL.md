@@ -113,6 +113,9 @@ description: "Use when playing or developing Naked Eye (眼见为实), the naked
 - 能从游戏给客户端的结构化数据里拿到的东西（伤害事件、实体状态），就别去匹配字幕或显示文字。伤因来自 `Hurt.java`（伤害事件包）。"看得见"一律用 `Perception.entities(…, true)` 的结果：`anyPointVisible` 只管有没有东西挡着，不管视野，单独用它就会泄露背后的东西。
 - ServerReplay 的玩家录制器原本只让 Flashback 格式暂停；对 ReplayMod 格式来说，暂停只是停时钟、不丢包，所以服务端 mod 放开了这个限制（`RecordingClock`）：冻结期间照录，但不计时。`replay_cut.py` 只给更早的旧录像用。
 
+- **背包里有方块 ≠ 手里有方块**：`place` 是用「手上拿的东西」右键，不是从背包里取。第九命之后的第二段：连着五次封顶都回 `couldn't place (tried 3 faces, 5 spots each; last: clicked 3x, nothing appeared)`，其实土在背包第 8 格、手里空着。放任何方块之前先 `hc tohotbar <背包格> <快捷栏0-8>` 再 `hc slot N`，然后看 obs 的 `holding [N] …` 确认；脚本里要封装成 `hold_item()`（shelter.py 现在有，42 个测试）。
+- `hc dig`/`craft`/`walk` 之后手上拿的东西可能变掉，放方块前的第一件事永远是重新确认 `holding`。
+
 ## 4. 验尸流程（每次死亡后都要做）
 
 1. **用 `tools/review.py` 重建现场**（`open` 最新录像 → `report`，需要时 `goto` 到某个时刻，再看 `agent` / `god`），**按机制归因**，不要只写"被僵尸打死"。回答两个问题：它当时感知到了什么？实际上周围有什么？前者够用却做错了，是打法问题；它根本不可能知道，是感知或反射要补。

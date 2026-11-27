@@ -63,3 +63,57 @@ def test_shelter_says_it_failed_when_the_player_never_leaves_the_surface():
     m.call = fake_call
     m.obs = lambda: surface
     assert m.main(force=True) == 1
+
+
+def test_a_block_in_the_bag_is_not_a_block_in_the_hand():
+    """The cap kept failing with 'clicked 3x, nothing appeared' because the dirt sat in the inventory
+    while the hand was on the sword.  hold_item must move it to the hotbar and select it."""
+    m = load()
+    state = {"selected": 3, "slots": {9: "oak_planks", 20: "dirt"}}
+    sent = []
+
+    def fake_obs():
+        inv = [{"slot": k, "item": v, "count": 8} for k, v in sorted(state["slots"].items())]
+        return {"self": {"inventory": inv, "selected_slot": state["selected"],
+                         "pos": [0.5, 64.0, 0.5], "health": 20}, "entities": []}
+
+    def fake_act(q):
+        sent.append(dict(q))
+        if q.get("type") == "to_hotbar":
+            item = state["slots"].pop(q["slot"])
+            state["slots"][q["hotbar"]] = item
+        elif q.get("type") == "hotbar":
+            state["selected"] = q["slot"]
+        return {"result": "ok"}
+
+    m.obs = fake_obs
+    m.act = fake_act
+    assert m.hold_item("dirt") == 0
+    kinds = [a.get("type") for a in sent]
+    assert kinds == ["to_hotbar", "hotbar"], kinds
+    assert sent[0]["slot"] == 20 and sent[0]["hotbar"] == 0
+
+
+def test_hold_item_leaves_a_hotbar_block_where_it_is():
+    m = load()
+    state = {"selected": 3, "slots": {2: "dirt"}}
+    sent = []
+
+    def fake_obs():
+        inv = [{"slot": k, "item": v, "count": 8} for k, v in sorted(state["slots"].items())]
+        return {"self": {"inventory": inv, "selected_slot": state["selected"], "pos": [0.5, 64.0, 0.5]},
+                "entities": []}
+
+    m.obs = fake_obs
+    m.act = lambda q: sent.append(dict(q)) or (state.__setitem__("selected", q["slot"])
+                                               if q.get("type") == "hotbar" else None) or {"result": "ok"}
+    assert m.hold_item("dirt") == 2
+    assert [a.get("type") for a in sent] == ["hotbar"]
+
+
+def test_hold_item_returns_none_when_the_item_is_missing():
+    m = load()
+    m.obs = lambda: {"self": {"inventory": [], "selected_slot": 0, "pos": [0.5, 64.0, 0.5]},
+                     "entities": []}
+    m.act = lambda q: {"result": "ok"}
+    assert m.hold_item("dirt") is None

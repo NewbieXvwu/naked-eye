@@ -74,6 +74,29 @@ def cap_cell(fx, fy, fz):
     return fx, fy + 2, fz
 
 
+def hold_item(item, prefer=0):
+    """Put `item` in the hand before placing it, and say which hotbar slot it is in.
+
+    Death #9b (2026-11-27 10:29): five caps in a row answered "couldn't place (tried 3 faces, 5 spots
+    each; last: clicked 3x, nothing appeared)" while the player was holding an empty hand — the dirt
+    was in the inventory, the hand was not on it, and `place` clicks with whatever is held.  A block in
+    the bag is not a block in the hand."""
+    o = obs()
+    inv = o["self"].get("inventory", [])
+    hit = next((i for i in inv if i.get("item") == item), None)
+    if not hit:
+        return None
+    slot = hit["slot"]
+    if slot > 8:
+        act({"type": "to_hotbar", "slot": slot, "hotbar": prefer, "wait": 20})
+        slot = prefer
+    act({"type": "hotbar", "slot": slot, "wait": 10})
+    o = obs()
+    if o["self"].get("selected_slot") == slot:
+        return slot
+    return None
+
+
 def cap_item(o):
     for want in CAPS:
         for i in o["self"].get("inventory", []):
@@ -164,6 +187,11 @@ def main(force):
     for yaw in (0, 90, 180, 270, 45, 135, 225, 315):
         act({"type": "look", "yaw": yaw, "pitch": -55, "wait": 2})
     act({"type": "look", "yaw": 0, "pitch": -88, "wait": 3})
+    slot = hold_item(item)
+    if slot is None:
+        print(f"cannot get {item} into my hand; the cap cannot be placed")
+        return 1
+    print(f"holding {item} in hotbar slot {slot}")
     r = act({"type": "place", "x": cx, "y": cy, "z": cz, "item": item, "wait": 60})
     msg = r.get("observation", {}).get("control", {}).get("last_result") or r.get("result") or ""
     print(f"cap at {cx},{cy},{cz}:", msg)
