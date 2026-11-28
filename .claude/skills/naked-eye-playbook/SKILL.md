@@ -91,6 +91,16 @@ description: "Use when playing or developing Naked Eye (眼见为实), the naked
 - 世界可能冻在我半空下落的时候，这时的满血不说明任何问题。先看 `⚠ FALLING` 那一行和 `motion`；身上常备一桶水，会摔成重伤时反射会自动倒水。绝不挖自己脚下那一格。
 - 下界：岩浆每 10 tick 流一格（主世界 30 tick），没有水能灭火，碰一下岩浆就要烧大约 15 秒，几乎等于死。挖隧道时身上要带够地狱岩，挖到岩浆让任务去堵，千万别自己往前走；能绕开就绕开。
 
+## 2.5 作弊模式（速通）打法
+
+- 开局：`HONEST_CHEAT=1 ./start.sh` → `hc speed auto` → `hc scan`。`hc find X all` 搜的是“去过的所有地方”（已加载区块实时 + 区块记忆）。
+- 实测路线（第一局，IGT 21 分钟点亮下界门）：`hc b mine 5 <各种 log>` → `hc make` 木板/桌子/木镐 → `hc b mine 12 stone` → 石镐、熔炉 → `hc b mine 11 iron_ore deepslate_iron_ore` + `mine 7 coal_ore` → `hc smelt raw_iron` → 铁镐/桶/铁剑 → `hc b mine 3 diamond_ore deepslate_diamond_ore` → 钻石镐 → 废墟传送门箱子（燧石、金胡萝卜、金靴）→ 拆废墟的黑曜石就地改建 2×3 门。
+- **`hc make` 之前先确认手上有木板**：钻石镐那次就是没木板、没桌子，白跑一趟。Baritone 的 `goto` 会从地底一路挖上来，很费镐子，长途前带一把备用镐。
+- **站在传送门里别干别的**：在门里砍树，人被传送走了。
+- **不穿金装备、不带武器绝不进下界**（第二命）：猪灵见人就射，空手打不过拿弩的。
+- **烈焰人别在刷怪笼口硬刚**（第一命前的 9 血）：先举盾挡火球、站在它正下方再砍（`Fight.blazeTick`）；被点着时先撤到看不见它的地方。
+- **别在危险地点重启客户端**：重连那几秒以前世界是在跑的（现在服务端会在 agent 加入时先替它按住世界，但仍然最好在安全处改代码）。
+
 ## 3. 技术坑（改代码时要记住）
 
 - `pl.tickCount` 在重生后会归零。凡是计时器一律用 `HonestClient.ticks`（这个 bug 让嘶嘶声反射一直触发，打断了所有任务）。
@@ -135,6 +145,7 @@ description: "Use when playing or developing Naked Eye (眼见为实), the naked
 ## 5. 战绩
 
 - 本机接管（第五局，进行中）：新开一档，死了 10 次。①夜里空手没封成顶，被骷髅射死；②挖竖井 13 格摔到 1 血，脚本无视告警继续挖，被骷髅补刀；③日出开封顶时僵尸就在 5 m 内，空手 6 血被打死。三条都改成了代码：`shelter.py`（封顶 + `--out`）、`descend.py`（`stop_reason`）、`gather.py`（同一个护栏）。④在出生点的洞穴顶盖上向下挖，第一步踩空，y135 → y100 摔死；新增 `probe.py`（挖一格、低头看 crosshair 再决定走不走），打法手册写上「出生点是洞穴顶盖」。⑤又在出生点山坡 (73,134,-8) 往南挖台阶去挖 y129 的铁矿，挖穿洞顶从 y134 掉到 y106；mod 已经喊 `FALLING — LETHAL`，`descend.py` 只读 `result` 没读 `woke`，还发了个 wait 去"看看情况"，等于把世界解冻，摔死。修复：`safety.res_text()` 把 `woke` 并进判定，FALLING/LETHAL 一律停；`descend.py` 把整条回包交给 `stop_reason`；新增 3 个测试。⑥`descend.py` 又被派去 (94,129,-15) 往南挖 y110，挖穿同一片洞顶；落地水没有、方块也放不了，掉到 y89 摔死。新增 `SPAWN_CAVERN` 盒子（x 58..112，z -48..30），在盒子里 `descend.py` 直接拒开工。⑦在石岸山脚往 y16 挖铁，挖穿海床下的含水层淹死；`stop_reason` 现在认 `drown / out of air / head underwater` 和 ≤3 格气泡，`descend.py`/`ores.py` 对「岸边有水」拒开工（`near_water`）。⑧5 血、饿着，为捞海带游进海里，被 drowned 拖在水下打死；`stop_reason` 新增「水里 + 24 m 内有 drowned」和「≤8 血 + 在水里」两条硬停，3 个测试。⑨夜里 5 血，僵尸从背后打了一下把世界吓停，`shelter.py` 的每条指令都被 `refused`（要 `resume: true`）却照样跑完并谎报「已封顶」，人还站在地面，被僵尸补死；修复：`act()` 遇 PAUSED 自动 resume 重发，`main()` 结尾验证 y 真的下降，否则报失败；2 个测试。⑩复活后在平原上 4 血站着转镜头找动物，骷髅一箭从南边射来打死；教训是「没有护栏的临时循环不能在夜里或黑暗地形跑」，找动物改用 `hc around`。
+- 作弊模式第一局（速通，进行中）：IGT 21 分点亮下界门、找到要塞。①在烈焰人刷怪笼附近重启客户端，重连时世界没冻住，被烈焰人烧死 → 服务端 `Clock.joined`：agent 加入时先按住世界，直到它的客户端发来第一条 Hold。②空手、无金甲回下界捡装备，被弩猪灵围射，“还手”反射一次次把我从传送门前拽回去 → 反射在“没武器且对方是远程/血 ≤10”或“正在撤退且血 ≤8”时不再还手。
 - 第二局：挖到钻石（第 3 条命）。
 - 第四局：死到第 21 次，两次凑齐下界材料都没能进去。
 - 第五局起：思考时世界冻结（空闲暂停），`hc speed auto` 自动定倍速，`hc note` 解说，死后用 `tools/review.py` 复盘。

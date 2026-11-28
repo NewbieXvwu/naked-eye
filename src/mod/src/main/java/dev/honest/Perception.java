@@ -223,6 +223,10 @@ public final class Perception {
             inv.add(it);
         }
         s.add("inventory", inv);
+        // the 2x2 grid of the inventory screen keeps what was left in it, outside the 36 slots: say so
+        JsonArray grid = new JsonArray();
+        for (var sl : pl.inventoryMenu.getInputGridSlots()) if (!sl.getItem().isEmpty()) grid.add(itemName(sl.getItem()) + " x" + sl.getItem().getCount() + " (menu slot " + sl.index + ")");
+        if (!grid.isEmpty()) s.add("left_in_crafting_grid", grid);
         // an open container is on screen: everything in its slots is visible
         if (pl.containerMenu != pl.inventoryMenu) {
             JsonObject c = new JsonObject();

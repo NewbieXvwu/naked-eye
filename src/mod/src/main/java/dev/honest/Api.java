@@ -90,6 +90,11 @@ public final class Api {
             j.add("entities", onClient(() -> Cheat.ents(Minecraft.getInstance(), Double.parseDouble(q.getOrDefault("r", "128")),
                     java.net.URLDecoder.decode(q.getOrDefault("type", ""), StandardCharsets.UTF_8), Integer.parseInt(q.getOrDefault("n", "30")))));
             return j; }));
+        agent.createContext("/box", ex -> handle(ex, () -> {
+            if (!Cheat.ON) throw new IllegalArgumentException("only in cheat mode (HONEST_CHEAT=1 ./start.sh)");
+            var q = query(ex); int[] v = new int[6]; String[] k = {"x1", "y1", "z1", "x2", "y2", "z2"};
+            for (int i = 0; i < 6; i++) v[i] = Integer.parseInt(q.get(k[i]));
+            return onClient(() -> Cheat.box(Minecraft.getInstance(), v[0], v[1], v[2], v[3], v[4], v[5])); }));
         agent.createContext("/scan", ex -> handle(ex, () -> {
             if (!Cheat.ON) throw new IllegalArgumentException("only in cheat mode (HONEST_CHEAT=1 ./start.sh)");
             JsonObject j = new JsonObject();
@@ -406,7 +411,8 @@ public final class Api {
         for (Wait w : WAITS) {
             if (w.latch.getCount() == 0) continue;
             String alarm = null;
-            if (p != null && p.getHealth() < w.hp0) alarm = String.format("hurt (%.0f -> %.0f HP)", w.hp0, p.getHealth()) + hurtCause(p);
+            if (p != null && p.getHealth() < w.hp0 && Cheat.ON && Cheat.tick(p, p.getHealth())) {}   // (a poison/wither tick: not news)
+            else if (p != null && p.getHealth() < w.hp0) alarm = String.format("hurt (%.0f -> %.0f HP)", w.hp0, p.getHealth()) + hurtCause(p);
             else if (p != null && p.getAirSupply() < Math.min(w.air0, p.getMaxAirSupply()) - 60) alarm = "running out of air";
             else if (Pause.paused != null && !"idle".equals(Pause.pausedKind)) alarm = "PAUSED: " + Pause.paused;
             else if (Talk.heardSeq > w.heard0) alarm = "a message: " + Talk.lastHeard;   // (someone spoke to me: I may want to answer)

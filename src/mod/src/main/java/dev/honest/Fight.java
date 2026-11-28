@@ -224,6 +224,7 @@ public final class Fight implements Controller.Task {
                 || lr.getMainHandItem().getItem() instanceof net.minecraft.world.item.CrossbowItem);
         if (duel && shieldOff && rangedT) return duelTick(mc, pl, (LivingEntity) e, d, charge, onTarget);
         if (e instanceof net.minecraft.world.entity.monster.Creeper cr) return creeperTick(mc, pl, cr, d, charge, onTarget);
+        if (e instanceof net.minecraft.world.entity.monster.Blaze bz) return blazeTick(mc, pl, bz, d, charge, onTarget, shieldOff);
         boolean shield = shieldOff;
         boolean threat = e instanceof LivingEntity le2 && (le2.isUsingItem() || d < 3.5);
         if (shield && charge < 0.9f && threat) { Controller.hold("use", 3); return null; }   // raise the shield while the swing recharges
@@ -241,6 +242,28 @@ public final class Fight implements Controller.Task {
             swings++;
             if (falling && !pl.isSprinting()) crits++;
         }
+        return null;
+    }
+
+    /** Blazes hover out of reach and shoot volleys of three fireballs. Shield up toward it whenever a fireball is on
+     *  its way or it's charging (it glows: Blaze.isOnFire()); get under it; when it's in reach and the swing is charged,
+     *  drop the shield for one tick and hit — jumping if it floats just above. */
+    String blazeTick(Minecraft mc, LocalPlayer pl, net.minecraft.world.entity.monster.Blaze bz, double d, float charge, boolean onTarget, boolean shield) {
+        boolean incoming = false;
+        Vec3 me = pl.getBoundingBox().getCenter();
+        for (Entity f : mc.level.getEntities(pl, pl.getBoundingBox().inflate(14), x -> x instanceof net.minecraft.world.entity.projectile.hurtingprojectile.SmallFireball)) {
+            Vec3 v = f.position().subtract(f.xo, f.yo, f.zo), to = me.subtract(f.position());
+            if (v.lengthSqr() > 1e-4 && v.normalize().dot(to.normalize()) > 0.85) { incoming = true; break; }
+        }
+        double hd = Math.hypot(bz.getX() - pl.getX(), bz.getZ() - pl.getZ()), up = bz.getY() - pl.getY();
+        if (d <= 3.0 && charge >= 0.9f && onTarget && !incoming) {
+            Controller.release("use");
+            if (Controller.click(mc, "attack")) { swings++; if (!pl.onGround() && pl.getDeltaMovement().y < 0) crits++; }
+            return null;
+        }
+        if (shield && (incoming || bz.isOnFire() || charge < 0.9f)) Controller.hold("use", 3); else Controller.release("use");
+        if (hd > 1.2 && d > 2.6) approach(mc, pl, bz, d);
+        else if (up > 1.2 && d > 2.9 && pl.onGround() && charge >= 0.9f) Controller.hold("jump", 2);   // it floats just above: jump into reach
         return null;
     }
 }

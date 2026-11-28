@@ -32,7 +32,8 @@ public final class Controller {
     static float[] lastAim;
     public static int trackId = 0; static int trackLost = 0;
     static float[] flick; // {startYaw, startPitch, targetYaw, targetPitch, tick, durationTicks}
-    public static final int MAX_CPS = 12;                // clicks per second
+    public static final int MAX_CPS = 12;
+    static int lastNoFightNote = -999;                // clicks per second
 
     static Float targetYaw, targetPitch;
     static final Map<String, Integer> holds = new HashMap<>();
@@ -201,6 +202,18 @@ public final class Controller {
                 if (e instanceof net.minecraft.world.entity.Mob m && !m.isAggressive() && !hurtRecently) continue;
                 if (!Perception.anyPointVisible(mc.level, pl.getEyePosition(), e.getBoundingBox())) continue;
                 double d = e.distanceTo(pl); if (d < bd) { bd = d; best = e; }
+            }
+            // ...but not when fighting is the worse bet: no weapon against a ranged mob or with HP low, or HP low while
+            // I'm getting away (death #2 of the cheat run: empty-handed among crossbow piglins, the reflex kept turning
+            // me around from the portal to punch them, 20 -> 0 HP)
+            if (best != null && (hurtRecently || bd < 2.5)) {
+                boolean armed = false;
+                for (int i = 0; i < 36; i++) { var it = pl.getInventory().getItem(i); if (it.is(net.minecraft.tags.ItemTags.SWORDS) || it.is(net.minecraft.tags.ItemTags.AXES)) armed = true; }
+                boolean ranged = best instanceof net.minecraft.world.entity.LivingEntity le && (le.getMainHandItem().getItem() instanceof net.minecraft.world.item.BowItem
+                        || le.getMainHandItem().getItem() instanceof net.minecraft.world.item.CrossbowItem);
+                boolean leaving = task instanceof BaritoneBridge.Go || task instanceof BaritoneBridge.Cmd || task instanceof Walk;
+                String why = !armed && (ranged || pl.getHealth() <= 10) ? "no weapon" : leaving && pl.getHealth() <= 8 ? "HP low and I'm getting away" : null;
+                if (why != null) { if (HonestClient.ticks - lastNoFightNote > 60) { lastNoFightNote = HonestClient.ticks; Events.note("reflex", "a " + Perception.entityName(best) + " is on me — not fighting back (" + why + ")"); } best = null; }
             }
             if (best != null && (hurtRecently || bd < 2.5)) {
                 Events.note("reflex", "a " + net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(best.getType()).getPath() + " is on me -> fighting back");

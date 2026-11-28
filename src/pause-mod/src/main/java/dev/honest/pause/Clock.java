@@ -35,7 +35,7 @@ public final class Clock {
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
-    static final class Holding { final long sinceMs = System.currentTimeMillis(); String why; boolean expired; }
+    static final class Holding { final long sinceMs = System.currentTimeMillis(); String why; boolean expired, joining; }
     static final Map<UUID, Holding> HOLDS = new HashMap<>();
 
     static void register() {
@@ -46,6 +46,7 @@ public final class Clock {
 
     static void onHold(ServerPlayer p, Hold h) {
         UUID id = p.getUUID();
+        Holding j = HOLDS.get(id); if (j != null && j.joining) { HOLDS.remove(id); }   // (its client speaks: the join hold is over)
         if (!h.on()) { HOLDS.remove(id); apply(p.level().getServer()); return; }   // (letting go is always fine)
         if (!Watch.isAgent(p)) return;                      // (a watcher can't stop the world)
         if (h.on()) {
@@ -53,6 +54,15 @@ public final class Clock {
             if (x == null) { x = new Holding(); HOLDS.put(id, x); }
             x.why = h.why();                                // (an expired hold stays expired until the agent acts)
         } else HOLDS.remove(id);
+        apply(p.level().getServer());
+    }
+
+    /** An agent just joined: its body is in the world before its client has the controls (loading screen, the mod
+     *  starting up). Hold the world for it until its client speaks — a blaze burned a restarting agent to death in
+     *  those few seconds. (No word for 60 s = a client without the mod: let go.) */
+    static void joined(ServerPlayer p) {
+        Holding x = new Holding(); x.why = "joining: waiting for its client to take the controls"; x.joining = true;
+        HOLDS.put(p.getUUID(), x);
         apply(p.level().getServer());
     }
 
@@ -110,6 +120,7 @@ public final class Clock {
         if (server.getTickCount() % 20 == 0 && Rules.load()) Rules.sendAll(server);
         int thinkLimitS = Rules.thinkLimitS;
         watchAgents(server);
+        if (HOLDS.values().removeIf(x -> x.joining && System.currentTimeMillis() - x.sinceMs > 60_000)) apply(server);
         if (thinkLimitS <= 0 || HOLDS.isEmpty()) return;
         long now = System.currentTimeMillis(); boolean changed = false;
         for (var e : HOLDS.entrySet()) {

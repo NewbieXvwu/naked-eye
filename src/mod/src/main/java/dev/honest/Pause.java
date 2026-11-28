@@ -62,7 +62,7 @@ public final class Pause {
             String why = null, kind = null;
             var hiss = Events.recentSound("Creeper hisses", 3);   // "Creeper hisses": the 1.5 s fuse has started somewhere near
             if (false && hiss != null && hp >= lastHp) { why = "a creeper is HISSING (" + (hiss.has("direction") ? hiss.get("direction").getAsString() : "?") + ", " + (hiss.has("loudness") ? hiss.get("loudness").getAsString() : "") + ") — it blows in ~1.5 s"; kind = "hiss"; }
-            else if (lastHp >= 0 && hp < lastHp) { why = String.format("hurt %.0f -> %.0f HP%s", lastHp, hp, Api.hurtCause(pl)); kind = "hurt"; }
+            else if (lastHp >= 0 && hp < lastHp && !(Cheat.ON && Cheat.tick(pl, hp))) { why = String.format("hurt %.0f -> %.0f HP%s", lastHp, hp, Api.hurtCause(pl)); kind = "hurt"; }
             else if (pl.isUnderWater() && air < pl.getMaxAirSupply() / 2 && lastAir >= pl.getMaxAirSupply() / 2) { why = "half my air is gone"; kind = "air"; }
             else if (pl.isOnFire() || pl.isInLava()) { why = pl.isInLava() ? "I'm in lava" : "I'm on fire"; kind = "fire"; }
             else if (!fallAlarmed && Fall.alarming(pl)) {
@@ -73,6 +73,9 @@ public final class Pause {
             else {
                 for (Entity e : mc.level.getEntities(pl, pl.getBoundingBox().inflate(5))) {
                     if (!(e instanceof Enemy) || alarmedMobs.contains(e.getId())) continue;
+                    // cheat mode knows who is after me: a piglin or hoglin minding its own business is no news
+                    if (Cheat.ON && e instanceof net.minecraft.world.entity.Mob m0 && !m0.isAggressive()
+                            && (e instanceof net.minecraft.world.entity.monster.piglin.AbstractPiglin || e instanceof net.minecraft.world.entity.monster.hoglin.Hoglin)) continue;
                     // mobs that are often peaceful (a spider by day, an enderman, a zombified piglin): only when they act hostile
                     if ((e instanceof net.minecraft.world.entity.monster.spider.Spider || e instanceof net.minecraft.world.entity.monster.Enderman
                             || e instanceof net.minecraft.world.entity.monster.zombie.ZombifiedPiglin)

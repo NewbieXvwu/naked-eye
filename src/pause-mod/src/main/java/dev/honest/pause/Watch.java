@@ -60,7 +60,7 @@ public final class Watch implements ModInitializer {
 
         ServerPlayConnectionEvents.JOIN.register((h, sender, server) -> {
             ServerPlayer p = h.player;
-            if (isAgent(p)) return;
+            if (isAgent(p)) { Clock.joined(p); return; }
             p.setGameMode(GameType.SPECTATOR);
             wants.put(p.getUUID(), "*");
             p.sendSystemMessage(Component.literal("Watching. Sneak to fly freely; left-click an agent or /watch [name] to get back in."));

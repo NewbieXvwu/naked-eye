@@ -64,6 +64,8 @@ public class HonestClient implements ClientModInitializer {
                 try { Perception.sweep(mc); } catch (Throwable t) { LOG.warn("[honest] sweep failed", t); }
             }
         });
+        net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientChunkEvents.CHUNK_LOAD.register((lvl, ch) -> {
+            try { Cheat.onChunk(lvl, ch); } catch (Throwable t) { LOG.warn("[honest] chunk index failed", t); } });
         dev.honest.pause.Clock.onSay(t -> Events.note("pause", t));   // the server's clock: who else shares the world, time limits
         ClientLifecycleEvents.CLIENT_STARTED.register(mc -> {
             mc.getSoundManager().addListener(Events::onSound);
@@ -72,6 +74,8 @@ public class HonestClient implements ClientModInitializer {
         java.nio.file.Path mem = java.nio.file.Path.of("honest_memory.bin");
         Perception.MAP.load(mem);
         ClientTickEvents.END_CLIENT_TICK.register(mc -> { if (ticks % 1200 == 0) Perception.MAP.save(mem); });
+        Cheat.loadIndex();
+        ClientTickEvents.END_CLIENT_TICK.register(mc -> { if (Cheat.ON && ticks % 600 == 300) Pause.IO.submit(Cheat::saveIndex); });
         ClientLifecycleEvents.CLIENT_STOPPING.register(mc -> { Perception.MAP.save(mem); FlightLog.close(); });
         ClientReceiveMessageEvents.GAME.register((msg, overlay) -> { if (!overlay) Events.onChat(msg, "game_message"); });
         ClientReceiveMessageEvents.CHAT.register((msg, signed, sender, params, ts) -> Talk.onChat(msg, signed, params));

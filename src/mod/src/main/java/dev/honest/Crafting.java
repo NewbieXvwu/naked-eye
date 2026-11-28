@@ -39,6 +39,9 @@ public final class Crafting {
         int made = 0, phase = 0, wait = 0, option = 0;
         Task(AbstractCraftingMenu m, List<RecipeDisplayEntry> o, String item, int times) { menu = m; options = o; this.item = item; this.times = times; }
         public String describe() { return "craft " + item + " x" + times; }
+        /** interrupted (a reflex, a new action): never leave the ingredients sitting in the grid — the 2x2 one keeps them
+         *  out of the inventory list, invisible (three diamonds "vanished" that way when a zombie hit mid-craft) */
+        public void cancel(Minecraft mc) { if (mc.player != null && mc.player.containerMenu == menu) clearGrid(mc, mc.player); }
 
         public String tick(Minecraft mc, LocalPlayer pl) {
             if (pl.containerMenu != menu) return "screen closed after " + made;
