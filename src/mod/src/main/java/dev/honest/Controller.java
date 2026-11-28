@@ -556,7 +556,10 @@ public final class Controller {
         public String describe() { return "eat " + (item == null ? "?" : item); }
         public String tick(Minecraft mc, LocalPlayer pl) {
             var st = pl.getMainHandItem();
-            if (item == null) { item = Perception.itemName(st); was = st.getCount(); }
+            if (item == null) {
+                if (!st.isEdible()) { holds.remove("use"); return "that is not food: " + Perception.itemName(st); }
+                item = Perception.itemName(st); was = st.getCount();
+            }
             if (++t > 80) { holds.remove("use"); return "no bite (still " + st.getCount() + ")"; }
             if (!Perception.itemName(st).equals(item) || st.getCount() < was) { holds.remove("use"); return "eaten"; }
             holds.put("use", -1);   // a person keeps the button down while chewing

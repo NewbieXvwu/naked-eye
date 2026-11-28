@@ -231,6 +231,9 @@ def main(a):
         food = sorted([i for i in inv if i["item"] in pref and i["slot"] < 9], key=lambda i: pref.index(i["item"]))
         if not food: print("no food in the hotbar"); return
         act({"type": "hotbar", "slot": food[0]["slot"]}, 1)
+        for _ in range(5):   # the slot change is a click: never eat before it lands (a stale slot ate cobblestone once)
+            if get("/observe")["self"].get("selected_slot") == food[0]["slot"]: break
+            act({"type": "hotbar", "slot": food[0]["slot"]}, 1)
         r = act({"type": "eat"}, 400); print(r.get("result") if isinstance(r, dict) else r)
         act({"type": "hotbar", "slot": cur}, 1); print("ate", food[0]["item"])
     elif c == "track": act({"type": "track", "id": int(x[0]) if x else 0}, 2)   # lock the view on a nearby entity (0 = off)

@@ -65,7 +65,7 @@ def look_around(o):
 
 
 def main(argv):
-    want, top, reach = DEFAULT_WANT, 32, 4.4
+    want, top, reach, min_hp = DEFAULT_WANT, 32, 4.4, None
     for i, a in enumerate(argv):
         if a == "--want" and i + 1 < len(argv):
             want = tuple(x.strip() for x in argv[i + 1].split(","))
@@ -73,6 +73,8 @@ def main(argv):
             top = int(argv[i + 1])
         if a == "--reach" and i + 1 < len(argv):
             reach = float(argv[i + 1])
+        if a == "--min-hp" and i + 1 < len(argv):
+            min_hp = int(argv[i + 1])
     o = obs()
     start_hp = o["self"]["health"]
     if near_water(o) and "--force" not in argv:
@@ -84,7 +86,7 @@ def main(argv):
     done = 0
     blacklist = set()   # cells that would not come out: never dig the same block twice
     for step in range(top * 4):
-        why = stop_reason(o, start_hp=start_hp)
+        why = stop_reason(o, start_hp=start_hp, min_hp=min_hp or 14)
         if why:
             print(f"⏸ stopped: {why}")
             return 2
