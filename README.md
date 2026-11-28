@@ -262,3 +262,16 @@ MARK entrance: 17 m west (behind-left), same level — reachable (P1)
 ## 在你自己的 Mac（或任意 Unix）上运行
 
 看 `PORTABLE.md`：`./setup.sh && ./start.sh && tools/hc obs`。启动器在 `launcher/mc.py`，只用 Python 标准库，不需要 Gradle。打包脚本是 `tools/make_packages.sh`。
+
+
+## 作弊模式（2026-11-28）
+
+新增 `HONEST_CHEAT=1 ./start.sh`：一局速通，目标是用尽可能少的游戏内时间（IGT，思考时世界冻结、不计时）打败末影龙。
+agent 可以知道原版服务端发给客户端的一切（已加载区块的每个方块、所有实体的精确坐标和血量、隔墙隔黑），并把这些信息
+记成“区块记忆”，搜索不受视距限制；手仍然是原版客户端的手：不发指令、不伪造数据包，只是不再模仿人（瞬间转头、不限点击
+频率），Baritone 满血运行。工具：`hc scan / find / ents / box / b / make / smelt / hunt / seek / wear / trash`。
+
+第一局：IGT 21 分钟点亮下界门、找到要塞，之后 7 次死亡（2 次烈焰人火烧、1 次重连时世界没冻住、1 次空手进下界、
+1 次挖穿出生点洞顶、1 次自己给骷髅开了射击孔、1 次闯进刷怪笼的烈焰人群），最多拿到 4 根烈焰棒和全套钻石甲。
+顺带修掉了几个影响两种模式的老 bug：`hc` 的自动关界面从没生效、重连时世界不冻结、空手的“还手”反射、Baritone 卡死；
+举盾反射也加进了普通模式（只挡看得见的、有反应时间、人手转速）。经验都在 `naked-eye-playbook` 技能里。
