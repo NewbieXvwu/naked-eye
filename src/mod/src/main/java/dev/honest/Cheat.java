@@ -198,19 +198,35 @@ public final class Cheat {
     // ------------------------------------------------------------------ /find
     static final class Cluster { BlockPos near; double d; int n; String block; final List<BlockPos> all = new ArrayList<>(); }
 
-    /** group hits into veins (within `gap` blocks of a member), nearest first */
+    /** group hits into veins (same block, within `gap` blocks of a member), nearest first. Union-find over a position
+     *  hash: linear in the hits (the old pairwise version timed out on an ocean's worth of water) */
     static List<Cluster> cluster(List<BlockPos> hits, List<String> names, Vec3 from, int gap) {
-        List<Cluster> cs = new ArrayList<>();
-        List<Integer> order = new ArrayList<>(); for (int i = 0; i < hits.size(); i++) order.add(i);
-        order.sort(Comparator.comparingDouble(i -> Vec3.atCenterOf(hits.get(i)).distanceTo(from)));
-        for (int i : order) {
-            BlockPos h = hits.get(i); Cluster in = null;
-            for (Cluster c : cs) { if (!c.block.equals(names.get(i))) continue; for (BlockPos m : c.all) if (m.distManhattan(h) <= gap) { in = c; break; } if (in != null) break; }
-            if (in == null) { in = new Cluster(); in.near = h; in.d = Vec3.atCenterOf(h).distanceTo(from); in.block = names.get(i); cs.add(in); }
-            in.all.add(h); in.n++;
+        int n = hits.size(); int[] parent = new int[n];
+        for (int i = 0; i < n; i++) parent[i] = i;
+        it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap at = new it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap(n * 2);
+        at.defaultReturnValue(-1);
+        for (int i = 0; i < n; i++) at.put(hits.get(i).asLong(), i);
+        for (int i = 0; i < n; i++) {
+            BlockPos h = hits.get(i);
+            for (int dx = -gap; dx <= gap; dx++) for (int dy = -gap; dy <= gap; dy++) for (int dz = -gap; dz <= gap; dz++) {
+                if (Math.abs(dx) + Math.abs(dy) + Math.abs(dz) > gap || (dx | dy | dz) == 0) continue;
+                int j = at.get(BlockPos.asLong(h.getX() + dx, h.getY() + dy, h.getZ() + dz));
+                if (j < 0 || !names.get(j).equals(names.get(i))) continue;
+                int a = find(parent, i), b = find(parent, j); if (a != b) parent[a] = b;
+            }
         }
+        Map<Integer, Cluster> byRoot = new HashMap<>();
+        for (int i = 0; i < n; i++) {
+            Cluster c = byRoot.computeIfAbsent(find(parent, i), r -> { Cluster x = new Cluster(); x.d = Double.MAX_VALUE; return x; });
+            double d = Vec3.atCenterOf(hits.get(i)).distanceTo(from);
+            if (d < c.d) { c.d = d; c.near = hits.get(i); c.block = names.get(i); }
+            c.n++; if (c.all.size() < 64) c.all.add(hits.get(i));   // (enough of it to tell whether it's exposed)
+        }
+        List<Cluster> cs = new ArrayList<>(byRoot.values());
+        cs.sort(Comparator.comparingDouble(c -> c.d));
         return cs;
     }
+    static int find(int[] p, int i) { while (p[i] != i) { p[i] = p[p[i]]; i = p[i]; } return i; }
 
     public static JsonObject find(Minecraft mc, List<String> qs, int r, int max, int ymin, int ymax) {
         LocalPlayer pl = mc.player; ClientLevel lvl = mc.level; JsonObject o = new JsonObject();
@@ -219,7 +235,7 @@ public final class Cheat {
         if (want.isEmpty()) { o.addProperty("error", "no block is called " + qs + " (use ids like iron_ore, oak_log, obsidian, lava)"); return o; }
         List<BlockPos> hits = new ArrayList<>(); List<String> names = new ArrayList<>();
         each(lvl, pl.blockPosition(), r, ymin, ymax, want, (x, y, z, s) -> {
-            if (hits.size() < 200_000) { hits.add(new BlockPos(x, y, z)); names.add(Perception.blockName(s)); }
+            if (hits.size() < 400_000) { hits.add(new BlockPos(x, y, z)); names.add(Perception.blockName(s)); }
         });
         Vec3 eye = pl.getEyePosition();
         List<Cluster> cs = cluster(hits, names, eye, 2);

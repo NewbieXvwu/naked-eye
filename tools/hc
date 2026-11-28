@@ -181,6 +181,9 @@ def baritone(cmd, wait=True):
 
 def quiet(obj, wait=40):
     """an action whose reply I only need the result of (helpers chaining several steps)"""
+    if obj.get("type") not in IN_SCREEN and obj.get("type") not in ("wait", "close_screen", "slot_click", "craft"):
+        for _ in range(3):   # (an open screen swallows world actions: a furnace that "couldn't be placed" six times)
+            if not clear_screen(): break
     if os.environ.get("HC_SCRIPT") != "1": obj["resume"] = True
     obj.setdefault("wait", wait); obj["cursor"] = cursor()
     return post(obj)
@@ -217,9 +220,22 @@ def make(item, n):
             if tables: break
             quiet({"type": "wait"}, 4)
         if not tables: print("couldn't place a crafting table here"); return
-    t = tables[0]["pos"]
-    quiet({"type": "interact", "x": t[0], "y": t[1], "z": t[2]}, 60)
-    if not get("/observe")["self"].get("open_screen"): print("couldn't open the table at", t, ":", last_result()); return
+    for attempt in (1, 2):
+        t = tables[0]["pos"]
+        quiet({"type": "interact", "x": t[0], "y": t[1], "z": t[2]}, 60)
+        if get("/observe")["self"].get("open_screen"): break
+        if attempt == 2: print("couldn't open the table at", t, ":", last_result()); return
+        # (in reach by distance but not by sight, say behind a corner: put down a table of my own)
+        inv = {i["item"]: i for i in get("/observe")["self"]["inventory"]}
+        if "crafting_table" not in inv:
+            planks = next((k for k in inv if k.endswith("_planks") and inv[k]["count"] >= 4), None)
+            if not planks: print("couldn't open the table at", t, "and no planks for another"); return
+            quiet({"type": "craft", "item": "crafting_table", "count": 1}, 100)
+        quiet({"type": "place", "item": "crafting_table"}, 100)
+        for _ in range(20):
+            near = [q for q in get("/find?blocks=crafting_table&r=6&n=3")["clusters"] if q["dist"] <= 4.6 and q["pos"] != t]
+            if near: tables = near; break
+            quiet({"type": "wait"}, 4)
     r = quiet({"type": "craft", "item": item, "count": n}, 300)
     print(last_result() if r.get("result") == "crafting" else r.get("result"))
     quiet({"type": "close_screen"}, 2)
@@ -357,7 +373,7 @@ def clear_screen():
         s = get("/observe").get("self", {})
         if s.get("open_screen"):
             print(f"ℹ️  {s['open_screen']} was open — closing it (an open screen swallows every world action)")
-            post({"type": "close", "cursor": cursor(), "resume": True, "wait": 50})
+            post({"type": "close_screen", "cursor": cursor(), "resume": True, "wait": 10})
             return True
     except Exception:
         pass
