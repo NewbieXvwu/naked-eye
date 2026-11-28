@@ -35,6 +35,9 @@ public final class Controller {
     public static final int MAX_CPS = 12;
     static int lastNoFightNote = -999;
     static int shieldUntil = -1; static Vec3 shieldFrom; static boolean baritonePaused = false;
+    public static boolean antiProjectile = true;
+    static final int REACTION_TICKS = 5;   // ~250 ms: seeing it, then the hand moves
+    static final Map<Integer, Integer> projSeenAt = new HashMap<>();
 
     static void shieldReflex(Minecraft mc, LocalPlayer pl) {
         if (!Perception.itemName(pl.getOffhandItem()).equals("shield") || pl.isDeadOrDying()) return;
@@ -46,17 +49,25 @@ public final class Controller {
             Vec3 to = me.subtract(f.position());
             double along = to.dot(v) / sp; if (along <= 0) continue;   // flying away from me
             if (f.position().add(v.scale(along / sp)).distanceTo(me) > 1.8) continue;   // it will miss
+            if (!Cheat.ON) {   // honest: only what I see, and only after I've had time to react to it
+                if (!Perception.inSight(mc, pl, f)) continue;
+                int first = projSeenAt.computeIfAbsent(f.getId(), k -> HonestClient.ticks);
+                if (HonestClient.ticks - first < REACTION_TICKS) continue;
+            }
             double t = along / sp; if (t < eta) { eta = t; threat = f; }
         }
-        if (threat != null && eta <= 14) { shieldUntil = HonestClient.ticks + 6; shieldFrom = threat.position().subtract(threat.position().subtract(threat.xo, threat.yo, threat.zo).scale(3)); }
+        if (projSeenAt.size() > 64) projSeenAt.keySet().removeIf(id -> mc.level.getEntity(id) == null);
+        if (threat != null && eta <= (Cheat.ON ? 14 : 20)) { shieldUntil = HonestClient.ticks + 6; shieldFrom = threat.position().subtract(threat.position().subtract(threat.xo, threat.yo, threat.zo).scale(3)); }
         boolean up = shieldFrom != null && HonestClient.ticks < shieldUntil;
         boolean baritoneTask = task instanceof BaritoneBridge.Go || task instanceof BaritoneBridge.Cmd;
         if (up) {
             if (baritoneTask && !baritonePaused && BaritoneBridge.present()) { BaritoneBridge.pause(true); baritonePaused = true; }
             Vec3 d = shieldFrom.subtract(pl.getEyePosition());
-            pl.setYRot((float) Math.toDegrees(Math.atan2(-d.x, d.z)));
-            pl.setXRot(Mth.clamp((float) -Math.toDegrees(Math.atan2(d.y, Math.sqrt(d.x * d.x + d.z * d.z))), -90f, 90f));
-            targetYaw = null; targetPitch = null;
+            if (Cheat.ON) {
+                pl.setYRot((float) Math.toDegrees(Math.atan2(-d.x, d.z)));
+                pl.setXRot(Mth.clamp((float) -Math.toDegrees(Math.atan2(d.y, Math.sqrt(d.x * d.x + d.z * d.z))), -90f, 90f));
+                targetYaw = null; targetPitch = null;
+            } else lookAt(pl, shieldFrom);   // (the human aim model turns me, at a hand's speed)
             if (!(pl.isUsingItem() && pl.getUseItem().is(net.minecraft.world.item.Items.SHIELD))) {
                 if (pl.isUsingItem()) pl.releaseUsingItem();
                 mc.gameMode.useItem(pl, net.minecraft.world.InteractionHand.OFF_HAND);
@@ -324,10 +335,12 @@ public final class Controller {
                 if (lavaPour > 20) lavaPour = 0;
             }
         }
-        // Sixth reflex (cheat mode): a fireball or an arrow is about to hit me -> face it and raise the shield, whatever I'm
-        // doing (Baritone is paused for those ticks: it would turn me back toward the path). A blocked fireball doesn't
-        // set me on fire — and fire is what killed me twice by the fortress (it ignores armour).
-        if (Cheat.ON) shieldReflex(mc, pl);
+        // Sixth reflex: a fireball or an arrow is about to hit me -> face it and raise the shield, whatever I'm doing
+        // (Baritone is paused for those ticks: it would turn me back toward the path). A blocked fireball doesn't set me
+        // on fire — and fire is what killed me twice by the fortress (it ignores armour). A player does this too, for what
+        // they SEE coming: in honest mode only a projectile in view, noticed for a reaction time, and the turn is a hand's
+        // turn; cheat mode knows what flies at my back and snaps round.
+        if (antiProjectile) shieldReflex(mc, pl);
         if (task != null && task.ownsInput()) { drowning = false; return; }
         // The one default reflex: head underwater and losing air with nothing else steering -> swim up.
         // A slow brain polling every few seconds otherwise drowns while thinking. Off via act {type:"reflex", anti_drown:false}.

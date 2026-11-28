@@ -53,6 +53,9 @@ CHEAT MODE only (HONEST_CHEAT=1 ./start.sh — the game is a speedrun, and I kno
   hc box X1 Y1 Z1 X2 Y2 Z2     every block in a box (≤32 a side), one layer per y, north up — read a structure, plan a build
   hc seek BLOCK[,B] HEADING [dist]  travel that way (north/sw/…) 48 blocks a leg until one of the blocks is loaded
   hc hunt TYPE[,T] [n]        kill n of those animals, nearest first (Baritone to each, fight, pick up the drops)
+  hc trash ITEM[,ITEM]        throw those stacks away and walk off (else they're picked right back up)
+  hc wear ITEM[,ITEM]         put on armour (what was worn goes back where it came from) / the shield into the off hand
+  hc click: screen slots — in the inventory screen the hotbar is 36-44, the bag 9-35, armour 5-8, off hand 45
   hc stash ITEM,ITEM          put those stacks into a chest in reach (dropped items get picked right back up)
   hc b-nowait CMD...          start it and return at once
   hc slot N | hc tohotbar INVSLOT HOTBAR | hc craft ITEM [n] | hc close | hc stop | hc wait TICKS | hc say TEXT | hc respawn
@@ -351,6 +354,37 @@ def hunt(types, n):
             r = post({"type": "baritone", "cmd": f"goto {int(d['pos'][0])} {int(round(d['pos'][1]))} {int(d['pos'][2])}", "wait": 200, "resume": True, "cursor": cursor()})
     fmt(get(f"/observe?cursor={cursor()}"))
 
+ARMOR_SLOT = {"helmet": 5, "chestplate": 6, "leggings": 7, "boots": 8}
+
+def trash(items):
+    """throw these stacks away and walk off from them (standing on dropped things just picks them back up)"""
+    o = get("/observe")["self"]; inv = o["inventory"]
+    slots = [i["slot"] for i in inv if i["item"] in items]
+    if not slots: print("nothing to throw"); return
+    n = sum(i["count"] for i in inv if i["item"] in items)
+    quiet({"type": "drop", "slots": slots}, 8 + 2 * n)
+    import math
+    yaw = math.radians(o["yaw"]); p = o["pos"]
+    bx, bz = round(p[0] + 7 * math.sin(yaw)), round(p[2] - 7 * math.cos(yaw))   # (7 blocks behind where I face)
+    quiet({"type": "go", "x": bx, "z": bz}, 200)
+    print(f"threw {n} items; now at", get("/observe")["self"]["pos"])
+
+def menu_slot(inv_slot):
+    """inventory slot (as obs lists them: 0-8 hotbar, 9-35 bag) -> slot of the inventory screen (hotbar is 36-44 there)"""
+    return inv_slot + 36 if inv_slot < 9 else inv_slot
+
+def wear(item):
+    """put on this armour piece (or the shield, into the off hand); what was worn goes where it came from"""
+    inv = get("/observe")["self"]["inventory"]
+    it = next((i for i in inv if i["item"] == item), None)
+    if not it: print("no", item); return
+    if item == "shield": quiet({"type": "to_hotbar", "slot": it["slot"], "hotbar": 40}, 4) if it["slot"] >= 9 else (quiet({"type": "slot_click", "slot": menu_slot(it["slot"])}, 3), quiet({"type": "slot_click", "slot": 45}, 3), quiet({"type": "slot_click", "slot": menu_slot(it["slot"])}, 3)); print("off hand:", get("/observe")["self"].get("equipment", {}).get("offhand")); return
+    kind = next((k for k in ARMOR_SLOT if item.endswith(k)), None)
+    if not kind: print(item, "is not armour"); return
+    ms = menu_slot(it["slot"])
+    for sl in (ms, ARMOR_SLOT[kind], ms): quiet({"type": "slot_click", "slot": sl, "mode": "pickup"}, 3)
+    print("wearing:", get("/observe")["self"].get("equipment"))
+
 NOTE_NAG = 12   # actions without a word of commentary before hc reminds you
 
 def nudge(kind):
@@ -565,6 +599,9 @@ def main(a):
             print(f"y={l['y']}"); print(l["rows"], end="")
     elif c == "seek": seek(x[0].split(","), x[1], float(x[2]) if len(x) > 2 else 400)
     elif c == "hunt": hunt(x[0], int(x[1]) if len(x) > 1 else 1)
+    elif c == "trash": trash(x[0].split(","))
+    elif c == "wear":
+        for it in x[0].split(","): wear(it)
     elif c == "stash": stash(x[0].split(","))
     elif c == "smelt": smelt(x[0], x[1] if len(x) > 1 else None)
     elif c == "b-nowait": baritone(" ".join(x), wait=False)

@@ -28,7 +28,6 @@ $hc smelt raw_gold coal
 echo "== iron gear"
 for it in iron_sword iron_helmet iron_chestplate iron_leggings shield bucket golden_boots flint_and_steel; do $hc make $it; done
 # wear it (armour slots by shift-click), shield to the off hand
-for s in $($hc obs | sed -n 3p | grep -oE "(iron_helmet|iron_chestplate|iron_leggings|golden_boots)x1@[0-9]+" | grep -oE "[0-9]+$"); do $hc click $s 0 quick_move >/dev/null; done
-sh=$($hc obs | sed -n 3p | grep -oE "shieldx1@[0-9]+" | grep -oE "[0-9]+$"); [ -n "$sh" ] && [ "$sh" -ge 9 ] && $hc tohotbar $sh 40 >/dev/null
+$hc wear iron_helmet,iron_chestplate,iron_leggings,golden_boots,shield
 echo "== food"; $hc hunt pig,cow,sheep 4 | grep -E "→|woke"; for f in porkchop beef mutton chicken; do $hc smelt $f coal >/dev/null; done
 $hc obs | head -3

@@ -41,11 +41,24 @@ def main():
         rods = count(s, "blaze_rod")
         if rods >= want: print(f"done: {rods} blaze rods, HP {s['health']}"); return 0
         if s.get("dead"): print("dead"); return 1
-        if s["health"] < 8: print(f"stopping: HP {s['health']}"); return 1
+        if s["health"] < 12: print(f"stopping: HP {s['health']} (heal first, out of sight)"); return 1
+        crowd = get("/ents?r=12&type=blaze&n=8")["entities"]
+        if len(crowd) >= 3: print(f"stopping: {len(crowd)} blazes within 12 m — too many at once"); return 1
         if s.get("on_fire") and s["health"] < 9: print("on fire and hurt: stopping"); return 1
         if s["health"] < 12 and eat(s): continue
         ents = get("/ents?r=10&type=blaze&n=5")["entities"]
-        ents = [e for e in ents if e.get("hp", 0) > 0]
+        ents = [e for e in ents if e.get("hp", 0) > 0 and e.get("visible")]
+        if not ents:   # cheat mode: I know where the hidden ones are — walk up to the nearest (within 40 m)
+            near = [e for e in get("/ents?r=40&type=blaze&n=8")["entities"] if e.get("hp", 0) > 0]
+            import math
+            # never walk into a crowd: a blaze with two others within 6 m of it is three fireball volleys at once
+            # (death #7: the script walked me to "the nearest hidden blaze" — into five of them round the spawner)
+            near = [e for e in near if sum(1 for o in near if o is not e and math.dist(o["pos"], e["pos"]) < 6) < 2]
+            if near:
+                b = near[0]; idle = 0
+                act({"type": "baritone", "cmd": f"goto {int(b['pos'][0])} {int(b['pos'][1]) - 1} {int(b['pos'][2])}", "limit": 160, "stop_hp": 9, "wait": 160})
+                if get("/status")["task"].startswith("baritone"): act({"type": "stop", "wait": 1})
+                continue
         if not ents:
             idle += 1
             if idle > 60: print("no blaze for a while"); return 1

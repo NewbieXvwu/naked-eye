@@ -360,7 +360,8 @@ public final class Api {
                 case "respawn" -> { pl.respawn(); mc.gui.setScreen(null); }
                 case "wait" -> {}
                 case "reflex" -> { if (a.has("anti_drown")) Controller.antiDrown = a.get("anti_drown").getAsBoolean();
-                                   if (a.has("anti_suffocate")) Controller.antiSuffocate = a.get("anti_suffocate").getAsBoolean(); }
+                                   if (a.has("anti_suffocate")) Controller.antiSuffocate = a.get("anti_suffocate").getAsBoolean();
+                                   if (a.has("anti_projectile")) Controller.antiProjectile = a.get("anti_projectile").getAsBoolean(); }
                 default -> { return "unknown action " + type; }
             }
             return "ok";

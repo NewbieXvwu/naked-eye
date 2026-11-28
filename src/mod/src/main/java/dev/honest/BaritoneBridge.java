@@ -75,6 +75,7 @@ public final class BaritoneBridge {
         s.renderPath.value = false;
         s.logAsToast.value = false;
         s.mineScanDroppedItems.value = true;
+        s.blockBreakAdditionalPenalty.value = 5.0;   // (walk around a hill rather than through it: it chewed two pickaxes travelling)
         s.logger.value = msg -> { lastMessage = msg.getString(); Events.note("baritone", lastMessage); };
         HonestClient.LOG.info("[honest] CHEAT MODE: Baritone on the real world, full power");
     }

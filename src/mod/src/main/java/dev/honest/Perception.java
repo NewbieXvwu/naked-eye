@@ -381,6 +381,16 @@ public final class Perception {
         return arr;
     }
 
+    /** is this entity on my screen and not behind anything (no light rule: what flies at me is usually lit, or on fire) */
+    static boolean inSight(Minecraft mc, LocalPlayer pl, Entity e) {
+        Vec3 eye = pl.getEyePosition(), fwd = pl.getViewVector(1f).normalize();
+        double tanV = Math.tan(Math.toRadians(mc.options.fov().get()) / 2), tanH = tanV * mc.getWindow().getWidth() / Math.max(1, mc.getWindow().getHeight());
+        Vec3 right = fwd.cross(new Vec3(0, 1, 0)); if (right.lengthSqr() < 1e-6) right = new Vec3(1, 0, 0); right = right.normalize();
+        Vec3 up = right.cross(fwd).normalize();
+        return inFov(e.getBoundingBox().getCenter().subtract(eye), fwd, right, up, tanH, tanV, e.getBoundingBox())
+            && anyPointVisible(mc.level, eye, e.getBoundingBox());
+    }
+
     static boolean inFov(Vec3 rel, Vec3 fwd, Vec3 right, Vec3 up, double tanH, double tanV, AABB bb) {
         double z = rel.dot(fwd);
         double rad = Math.max(bb.getXsize(), bb.getYsize()) / 2;
