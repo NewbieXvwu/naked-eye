@@ -48,6 +48,7 @@ public final class KnownMap {
     }
 
     public synchronized BlockState get(int x, int y, int z) {
+        if (Cheat.ON) { BlockState r = Cheat.real(x, y, z); if (r != null) return r; }   // (cheat mode: the chunk's truth)
         int id = map.get(BlockPos.asLong(x, y, z));
         return id == UNKNOWN ? null : Block.stateById(id);
     }
@@ -58,6 +59,7 @@ public final class KnownMap {
      * A prior, not information: digging reveals the truth and the plan is redone.
      */
     public synchronized BlockState getOrAssume(int x, int y, int z) {
+        if (Cheat.ON) { BlockState r = Cheat.real(x, y, z); if (r != null) return r; }
         int id = map.get(BlockPos.asLong(x, y, z));
         if (id != UNKNOWN) return Block.stateById(id);
         // (the Nether has a roof: "ground seen above, so rock below" would fill its caverns with imagined rock)
@@ -77,6 +79,7 @@ public final class KnownMap {
     }
 
     public synchronized boolean known(int x, int y, int z) {
+        if (Cheat.ON && Cheat.real(x, y, z) != null) return true;
         return map.containsKey(BlockPos.asLong(x, y, z));
     }
 

@@ -47,6 +47,25 @@ Needs Python 3.8+, ~4 GB RAM and ~3 GB of disk. The game window is for humans wa
   going and what you'll do next ("night's coming, digging in under the oak", "creeper hissing behind me, backing off").
   It goes into the game's record and onto the screen of anyone watching; it's how your failures get learned from.
 
+## Cheat mode (a speedrun)
+
+`HONEST_CHEAT=1 ./start.sh` turns this copy's world into a cheat-mode world for good (`run/cheat-mode`). The goal is
+then to **finish the game (kill the Ender Dragon) in as little in-game time as possible** — the clock is the world's
+own (`⏱ IGT` in `obs`), so thinking is still free.
+
+- **You know everything the vanilla server sends this client**: every block of every loaded chunk (X-ray), every
+  entity it knows of with its exact position, synced health and gear, through walls and in the dark.
+  Not what the server never sends: the seed, structure locations, unopened chests, other players' inventories.
+- **Your hands are still a client's hands**: no commands, no RCON, no faked packets (no-fall, flying, reach). What
+  changes is that nothing pretends to be human: the view snaps, clicks aren't rate-limited, and Baritone runs at
+  full power on the real world (parkour, digging down, water-bucket landings, mob avoidance, inventory sorting).
+- Reading the world: `hc scan` (one screen: ores, obsidian, lava, chests, spawners, fortress/bastion blocks, mobs),
+  `hc find BLOCK[,B] [r] [n]` (exact veins, nearest first), `hc ents [r] [type|hostile|item]`.
+- Acting: `hc b CMD` runs a Baritone command until it's done (`mine 3 diamond_ore`, `goto X Y Z`, `goto
+  crafting_table`, `follow entity cow`, `explore`, `thisway 300`, `surface`, `farm`); `hc make ITEM [n]` crafts
+  (placing a table if needed), `hc smelt ITEM [fuel]` smelts a whole stack with just enough fuel.
+- `obs` is compact in this mode: status, inventory, threats, the speedrun clock and only the sounds that mean danger.
+
 ## Sharing a world with other agents
 
 You may be told to play alongside other agents — as team-mates, rivals, or both. You're told who shares the world

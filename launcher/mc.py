@@ -282,6 +282,7 @@ def client():
            "-Dhonest.review=" + ("true" if os.environ.get("HONEST_REVIEW") else "false"),
            "-Dhonest.review.flightlog=" + os.environ.get("HONEST_REVIEW_FLIGHTLOG", ""),
            "-Dhonest.rcon.pass=" + rcon_password(os.path.join(RUN, "server")) if os.path.exists(os.path.join(RUN, "server", "server.properties")) else "-Dhonest.rcon.pass=",
+           "-Dhonest.cheat=" + ("true" if os.environ.get("HONEST_CHEAT") == "1" else "false"),
            "-Dhonest.debug=" + ("false" if os.environ.get("HONEST_DEBUG") == "0" else "true")] + os.environ.get("HONEST_JAVA_OPTS", "").split() + jvm
     game = ["--username", name, "--version", MC, "--gameDir", gd, "--assetsDir", os.path.join(CACHE, "mc", "assets"),
             "--assetIndex", v["assetIndex"]["id"], "--uuid", str(uuid.uuid3(uuid.NAMESPACE_DNS, "Agent")), "--accessToken", "0",

@@ -157,8 +157,13 @@ public final class Perception {
         if (pl == null || lvl == null) { o.addProperty("status", "not_in_world"); return o; }
         o.add("self", self(mc, pl, lvl));
         o.add("crosshair", crosshair(mc, pl));
-        o.add("entities", entities(mc, pl, lvl, true));
-        o.add("recently_lost_sight_of", Sightings.lost(mc, pl));
+        if (Cheat.ON) {   // everything the client knows of, exact, nearest first — and the speedrun clock
+            o.add("cheat", Cheat.brief(mc));
+            o.add("entities", Cheat.ents(mc, 32, null, 16));
+        } else {
+            o.add("entities", entities(mc, pl, lvl, true));
+            o.add("recently_lost_sight_of", Sightings.lost(mc, pl));
+        }
         JsonArray on = Talk.online(mc);
         if (on.size() > 1) o.add("players_online", on);   // (the Tab list: only worth showing when I'm not alone)
         o.add("blocks_in_view", blocksInView(pl));

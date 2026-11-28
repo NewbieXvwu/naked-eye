@@ -21,6 +21,7 @@ public final class BaritoneBridge {
     public static boolean present() { return FabricLoader.getInstance().isModLoaded("baritone"); }
 
     public static void install() {
+        if (Cheat.ON) { installCheat(); return; }
         HonestWorld.lookup = (x, y, z) -> Perception.MAP.getOrAssume(x, y, z);
         HonestWorld.maxTurnPerTick = Controller.MAX_TURN_PER_TICK;
         Settings s = BaritoneAPI.getSettings();
@@ -48,6 +49,64 @@ public final class BaritoneBridge {
         HonestClient.LOG.info("[honest] Baritone fork wired to the agent's memory");
     }
 
+    /** cheat mode: vanilla Baritone — plans over the real loaded chunks (its own cache too), turns instantly, may
+     *  parkour, dig down, clutch with a water bucket, steer around mobs it knows of through walls, and sort the
+     *  inventory. Its commands (mine, goto, explore, follow, farm, tunnel, …) come through the API, not the chat. */
+    static void installCheat() {
+        HonestWorld.lookup = null;
+        HonestWorld.maxTurnPerTick = 0f;
+        Settings s = BaritoneAPI.getSettings();
+        s.chatControl.value = false;       // commands arrive through /act {"type":"baritone"} instead
+        s.prefixControl.value = false;
+        s.freeLook.value = false;
+        s.smoothLook.value = false;
+        s.randomLooking.value = 0d;
+        s.randomLooking113.value = 0d;
+        s.allowParkour.value = true;
+        s.allowParkourPlace.value = false;
+        s.allowDownward.value = true;
+        s.allowWaterBucketFall.value = true;
+        s.allowInventory.value = true;
+        s.avoidance.value = true;
+        s.chunkCaching.value = true;
+        s.preferCheapestAdequateTool.value = true;
+        s.itemSaver.value = true;
+        s.useSwordToMine.value = false;
+        s.renderPath.value = false;
+        s.logAsToast.value = false;
+        s.mineScanDroppedItems.value = true;
+        s.logger.value = msg -> { lastMessage = msg.getString(); Events.note("baritone", lastMessage); };
+        HonestClient.LOG.info("[honest] CHEAT MODE: Baritone on the real world, full power");
+    }
+    static volatile String lastMessage = "";
+
+    /** a Baritone command (the ones you'd type after '#'), run as a task until Baritone has nothing left to do */
+    public static final class Cmd implements Controller.Task {
+        final String cmd; final int limit; final float stopHp; int t = 0, idle = 0; float startHp;
+        public Cmd(String cmd, int limitTicks, float stopHp) { this.cmd = cmd; this.limit = limitTicks; this.stopHp = stopHp; }
+        public String describe() { return "baritone " + cmd; }
+        public boolean ownsInput() { return true; }
+        public String tick(Minecraft mc, LocalPlayer pl) {
+            if (t++ == 0) {
+                startHp = pl.getHealth(); lastMessage = "";
+                if (!b().getCommandManager().execute(cmd)) return "baritone doesn't know '" + cmd + "' (try: help)";
+                return null;
+            }
+            if (pl.isDeadOrDying()) { cancel(mc); return "died"; }
+            if (pl.getHealth() <= stopHp && pl.getHealth() < startHp) { cancel(mc); return String.format("stopped: HP %.0f (stop at %.0f)", pl.getHealth(), stopHp); }
+            if (limit > 0 && t > limit) { cancel(mc); return "time limit (" + limit + " ticks) — " + lastMessage; }
+            if (active()) { idle = 0; return null; }
+            if (++idle < 10) return null;   // (between two paths Baritone is briefly idle)
+            return "done" + (lastMessage.isEmpty() ? "" : ": " + lastMessage);
+        }
+        public void cancel(Minecraft mc) { BaritoneBridge.cancel(); }
+    }
+
+    static boolean active() {
+        IBaritone b = b();
+        return b.getPathingBehavior().isPathing() || b.getPathingControlManager().mostRecentInControl().isPresent();
+    }
+
     public static void setAllowBreak(boolean v) { BaritoneAPI.getSettings().allowBreak.value = v; }
     public static void setAllowPlace(boolean v) { BaritoneAPI.getSettings().allowPlace.value = v; }
 
@@ -55,7 +114,7 @@ public final class BaritoneBridge {
 
     public static boolean busy() {
         IBaritone b = b();
-        return b.getPathingBehavior().isPathing() || b.getCustomGoalProcess().isActive();
+        return b.getPathingBehavior().isPathing() || b.getCustomGoalProcess().isActive() || Cheat.ON && active();
     }
 
     public static void cancel() { b().getPathingBehavior().cancelEverything(); }

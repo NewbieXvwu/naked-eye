@@ -76,6 +76,25 @@ public final class Api {
             }));
             return j;
         }));
+        // cheat mode only: the whole truth the client holds (see Cheat.java)
+        agent.createContext("/find", ex -> handle(ex, () -> {
+            if (!Cheat.ON) throw new IllegalArgumentException("only in cheat mode (HONEST_CHEAT=1 ./start.sh)");
+            var q = query(ex);
+            java.util.List<String> bs = java.util.Arrays.asList(java.net.URLDecoder.decode(q.getOrDefault("blocks", "diamond_ore"), StandardCharsets.UTF_8).split(","));
+            int r = Integer.parseInt(q.getOrDefault("r", "128")), n = Integer.parseInt(q.getOrDefault("n", "8"));
+            int y0 = Integer.parseInt(q.getOrDefault("ymin", "-10000")), y1 = Integer.parseInt(q.getOrDefault("ymax", "10000"));
+            return onClient(() -> Cheat.find(Minecraft.getInstance(), bs, r, n, y0, y1)); }));
+        agent.createContext("/ents", ex -> handle(ex, () -> {
+            if (!Cheat.ON) throw new IllegalArgumentException("only in cheat mode (HONEST_CHEAT=1 ./start.sh)");
+            var q = query(ex); JsonObject j = new JsonObject();
+            j.add("entities", onClient(() -> Cheat.ents(Minecraft.getInstance(), Double.parseDouble(q.getOrDefault("r", "128")),
+                    java.net.URLDecoder.decode(q.getOrDefault("type", ""), StandardCharsets.UTF_8), Integer.parseInt(q.getOrDefault("n", "30")))));
+            return j; }));
+        agent.createContext("/scan", ex -> handle(ex, () -> {
+            if (!Cheat.ON) throw new IllegalArgumentException("only in cheat mode (HONEST_CHEAT=1 ./start.sh)");
+            JsonObject j = new JsonObject();
+            int r = Integer.parseInt(query(ex).getOrDefault("r", "128"));
+            j.addProperty("text", onClient(() -> Cheat.scan(Minecraft.getInstance(), r))); return j; }));
         agent.createContext("/sonar", ex -> handle(ex, () -> {
             JsonObject j = new JsonObject();
             j.addProperty("text", onClient(() -> Sonar.describe(Minecraft.getInstance())));
@@ -313,6 +332,12 @@ public final class Api {
                     if (a.has("until")) { java.util.Set<String> u = new java.util.HashSet<>(); for (JsonElement e : a.getAsJsonArray("until")) u.add(e.getAsString()); go.until(u); }
                     Controller.start(mc, go);
                 }
+                case "baritone" -> {
+                    if (!Cheat.ON) return "refused: Baritone's own commands scan the real world — cheat mode only";
+                    if (!BaritoneBridge.present()) return "baritone not installed";
+                    Controller.start(mc, new BaritoneBridge.Cmd(a.get("cmd").getAsString(), a.has("limit") ? a.get("limit").getAsInt() : 0,
+                            a.has("stop_hp") ? a.get("stop_hp").getAsFloat() : 6f));
+                }
                 case "look_around" -> Controller.start(mc, new Controller.LookAround(pl, f(a, "pitch", 10)));
                 case "craft" -> { return Crafting.craft(mc, a.get("item").getAsString(), a.has("count") ? a.get("count").getAsInt() : 1); }
                 case "slot_click" -> { // a mouse click on a slot of the open screen
@@ -457,7 +482,10 @@ public final class Api {
             if (!st.canBeReplaced() || !st.getFluidState().isEmpty()) continue;
             if (pl.getBoundingBox().inflate(0.05).intersects(new net.minecraft.world.phys.AABB(c))) continue;
             var below = Perception.MAP.get(c.getX(), c.getY() - 1, c.getZ());
-            if (below == null || below.canBeReplaced() || !below.getFluidState().isEmpty()) continue;
+            boolean onGround = below != null && !below.canBeReplaced() && below.getFluidState().isEmpty();
+            // (cheat mode: any solid face to click on will do — a furnace can hang on a tunnel wall)
+            if (!onGround && !(Cheat.ON && java.util.Arrays.stream(net.minecraft.core.Direction.values()).anyMatch(d -> {
+                var n = mc.level.getBlockState(c.relative(d)); return !n.canBeReplaced() && n.getFluidState().isEmpty(); }))) continue;
             if (pl.getEyePosition().distanceTo(net.minecraft.world.phys.Vec3.atCenterOf(c)) > 4.2) continue;
             out.add(c.immutable());
         }

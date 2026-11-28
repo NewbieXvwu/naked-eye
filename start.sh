@@ -5,6 +5,10 @@
 #   HONEST_DEBUG=0   contest mode: no experimenter API on :7071
 #   HONEST_WINDOW=1  (Linux) open a real window instead of headless; macOS always opens one
 cd "$(dirname "$0")"; mkdir -p run/logs
+# cheat mode sticks to this copy's world once chosen: a world played with X-ray stays a cheat-mode world
+#   HONEST_CHEAT=1 ./start.sh   (speedrun: see every loaded block and entity, full Baritone — AGENTS.md, "Cheat mode")
+[ "$HONEST_CHEAT" = 1 ] && touch run/cheat-mode
+[ -f run/cheat-mode ] && { export HONEST_CHEAT=1; echo "CHEAT MODE (run/cheat-mode): X-ray, exact entities, full Baritone"; }
 API=$(python3 tools/ports.py assign >/dev/null && python3 tools/ports.py api); RCON=$(python3 tools/ports.py rcon)
 [ "$(python3 tools/ports.py slot)" != 0 ] && echo "instance slot $(python3 tools/ports.py slot): game port $(python3 tools/ports.py game), agent API $API"
 alive() { [ -f "run/$1.pid" ] && kill -0 "$(cat run/$1.pid)" 2>/dev/null; }

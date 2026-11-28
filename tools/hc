@@ -39,6 +39,16 @@
   hc click SLOT [button] [pickup|quick_move|swap]   click a slot of the open screen
   hc eat                      eat the best food in the hotbar
   hc track ID                 keep the crosshair on an entity while it stays in view (hc track = off)
+CHEAT MODE only (HONEST_CHEAT=1 ./start.sh — the game is a speedrun, and I know everything the server sends me):
+  hc scan [r]                 one screen: ores, obsidian, lava, chests, spawners, fortress/bastion/portal blocks, mobs, IGT
+  hc find BLOCK[,B] [r] [n] [ymin ymax]   exact veins of those blocks in loaded chunks, nearest first (iron_ore matches
+                              deepslate_iron_ore; log = every *_log; ~glass = anything containing "glass")
+  hc ents [r] [type,type|hostile|item]    every entity the client knows of: exact pos, hp, gear, aggressive, visible
+  hc b CMD...                 a Baritone command, run until Baritone is done (mine 3 iron_ore · goto x y z · goto iron_ore ·
+                              explore · follow entity cow · farm · tunnel · thisway 200 · surface · stop) — waits; alarms wake it
+  hc make ITEM [n]            craft n times: 2x2 grid, else a table in reach (places the one I carry, or makes one)
+  hc smelt ITEM [fuel]        smelt the whole stack at a furnace in reach (places the one I carry), just enough fuel
+  hc b-nowait CMD...          start it and return at once
   hc slot N | hc tohotbar INVSLOT HOTBAR | hc craft ITEM [n] | hc close | hc stop | hc wait TICKS | hc say TEXT | hc respawn
 """
 import json, os, sys, urllib.request
@@ -87,7 +97,14 @@ def fmt(o):
     out.append("crosshair: " + (f"{c['block']} at {c['pos']} ({c['face']} face)" if "block" in c else
                                  f"entity {c['entity']} ({c['type']})" if "entity" in c else "nothing"))
     ents = o.get("entities", [])
-    out.append(f"I see {len(ents)} creature(s)/thing(s):" if ents else "I see no creatures.")
+    if "cheat" in o:   # cheat mode: exact truth, one line each
+        ch = o["cheat"]
+        out.append(f"⏱ {ch['igt']}")
+        show = [e for e in ents if e.get("hostile") or e["dist"] < 12][:8]
+        out.append(f"entities within 32 m: {len(ents)}" + (" — nearest/hostile:" if show else ""))
+        for e in show: out.append("  " + ent_line(e))
+        ents = []
+    else: out.append(f"I see {len(ents)} creature(s)/thing(s):" if ents else "I see no creatures.")
     for e in ents:
         side = "ahead" if abs(e['bearing']) < 10 else (f"{e['bearing']}° right" if e['bearing'] > 0 else f"{-e['bearing']}° left")
         extra = e.get("looks", {}); gear = e.get("gear", {})
@@ -105,13 +122,17 @@ def fmt(o):
     if o.get("players_online"):
         out.append("players online: " + ", ".join(p["name"] + (f" [{p['team']}]" if "team" in p else "") + (" (me)" if p.get("me") else "")
                                                 for p in o["players_online"]))
-    bv = o.get("blocks_in_view", [])
+    bv = [] if "cheat" in o else o.get("blocks_in_view", [])
     if bv:
         out.append("blocks in view (nearest): " + ", ".join(f"{b['block']}@{b['nearest']}~{b['dist']}m" for b in bv[:14])
                    + (f" … +{len(bv)-14} more types" if len(bv) > 14 else ""))
-    out.append(f"remembered blocks: {o.get('known_blocks')}   task: {o['control']['task']}   last: {o['control']['last_result']}")
+    if "cheat" in o: out.append(f"task: {o['control']['task']}   last: {o['control']['last_result']}")
+    else: out.append(f"remembered blocks: {o.get('known_blocks')}   task: {o['control']['task']}   last: {o['control']['last_result']}")
     lines = []
     for ev in o.get("events", []):
+        # cheat mode sees every mob anyway: of the sounds keep only the ones that mean danger
+        if "cheat" in o and ev["kind"] == "sound" and not any(w in ev.get("subtitle", "") for w in ("hiss", "shoot", "explo", "Arrow", "fuse", "roar", "growl")): continue
+        if "cheat" in o and ev["kind"] == "task" and ev.get("text", "").startswith("baritone") and lines and "[baritone]" in lines[-1][0]: pass
         if ev["kind"] == "sound":
             l = f"  🔊 {ev['subtitle']} ({ev.get('loudness','')}, {ev.get('direction','?')})"
         elif ev["kind"] == "chat" and "channel" in ev:
@@ -123,10 +144,118 @@ def fmt(o):
         else: lines.append([l, 1])
     # repetitive noise (mining = break/plop over and over): fold runs, and keep only the latest 25 lines
     lines = [l if n == 1 else f"{l} ×{n}" for l, n in lines]
-    if len(lines) > 25: out.append(f"  … {len(lines)-25} earlier event lines omitted"); lines = lines[-25:]
+    keep = 8 if "cheat" in o else 25
+    if len(lines) > keep: out.append(f"  … {len(lines)-keep} earlier event lines omitted"); lines = lines[-keep:]
     out += lines
     if "cursor" in o: open(CUR, "w").write(str(o["cursor"]))
     print("\n".join(out))
+
+def ent_line(e):
+    hp = f" {e['hp']:g}/{e['max_hp']:g}hp" if "hp" in e else ""
+    tags = "".join(f" {t}" for t in ("hostile", "aggressive", "baby") if e.get(t)) + ("" if e.get("visible") else " (hidden)")
+    item = f" {e['item']}x{e['count']}" if "item" in e else ""
+    gear = (" gear " + ",".join(e["gear"].values())) if e.get("gear") else ""
+    return f"#{e['id']} {e['type']}{item}{hp} {e['dist']}m @{e['pos']}{tags}{gear}" + (f" name {e['name']}" if "name" in e else "") + (f" ⚠ {e['WARNING']}" if "WARNING" in e else "")
+
+def baritone(cmd, wait=True):
+    """a Baritone command; keep the request open (the world runs only while it is) until Baritone is done or an
+    alarm wakes me (an alarm pause refuses the next action until I decide: scripts must look at the reply)"""
+    r = post({"type": "baritone", "cmd": cmd, "wait": 1200 if wait else 1, "resume": os.environ.get("HC_SCRIPT") != "1", "cursor": cursor()})
+    if r.get("result") != "ok": print("->", r.get("result")); return r
+    while wait and not r.get("woke"):
+        st = get("/status")
+        if st["task"] == "idle": break
+        r = post({"type": "wait", "wait": 1200, "until_idle": True, "cursor": cursor()})
+        if str(r.get("result", "")).startswith("refused"): print("⏸ ", r["result"]); break
+        if get("/status")["task"] == "idle": break
+    if r.get("woke"): print("⚠️  woke early:", r["woke"])
+    o = r.get("observation") or get(f"/observe?cursor={cursor()}")
+    fmt(o); return r
+
+def quiet(obj, wait=40):
+    """an action whose reply I only need the result of (helpers chaining several steps)"""
+    if os.environ.get("HC_SCRIPT") != "1": obj["resume"] = True
+    obj.setdefault("wait", wait); obj["cursor"] = cursor()
+    return post(obj)
+
+def last_result():
+    return get("/status").get("last_result", "")
+
+def make(item, n):
+    """craft n times: in the 2x2 grid if it fits, else at a crafting table in reach (placing the one I carry, or making one)"""
+    o = get("/observe")
+    if o["self"].get("open_screen"): quiet({"type": "close_screen"}, 2)
+    r = quiet({"type": "craft", "item": item, "count": n}, 200)
+    lr = last_result() if r.get("result") == "crafting" else r.get("result", "")
+    if r.get("result") == "crafting" and "made" in lr and "then ran out" not in lr and "missing" not in lr: print(lr); return
+    if r.get("result") == "crafting" and "then ran out" in lr: print(lr); return
+    tables = get("/find?blocks=crafting_table&r=6&n=3")["clusters"]
+    tables = [t for t in tables if t["dist"] <= 4.3]
+    if not tables:
+        inv = {i["item"]: i for i in get("/observe")["self"]["inventory"]}
+        if "crafting_table" not in inv:
+            planks = next((k for k in inv if k.endswith("_planks") and inv[k]["count"] >= 4), None)
+            if not planks: print("no crafting table, and not 4 planks to make one"); return
+            quiet({"type": "craft", "item": "crafting_table", "count": 1}, 100)
+        r = quiet({"type": "place", "item": "crafting_table"}, 100)
+        print("placing a table:", r.get("result") if r.get("result") != "ok" else last_result())
+        for _ in range(5):   # (the block shows up once the server confirms it)
+            tables = [t for t in get("/find?blocks=crafting_table&r=6&n=3")["clusters"] if t["dist"] <= 4.6]
+            if tables: break
+            quiet({"type": "wait"}, 4)
+        if not tables: print("couldn't place a crafting table here"); return
+    t = tables[0]["pos"]
+    quiet({"type": "interact", "x": t[0], "y": t[1], "z": t[2]}, 60)
+    if not get("/observe")["self"].get("open_screen"): print("couldn't open the table at", t, ":", last_result()); return
+    r = quiet({"type": "craft", "item": item, "count": n}, 300)
+    print(last_result() if r.get("result") == "crafting" else r.get("result"))
+    quiet({"type": "close_screen"}, 2)
+
+FUEL_ITEMS = {"coal": 8, "charcoal": 8, "coal_block": 80, "blaze_rod": 12, "lava_bucket": 100}
+
+def smelt(item, fuel=None):
+    """smelt the whole stack of ITEM at a furnace in reach (placing the one I carry), with just enough fuel"""
+    inv = get("/observe")["self"]["inventory"]
+    have = sum(i["count"] for i in inv if i["item"] == item)
+    if not have: print("no", item); return
+    if fuel is None:
+        names = [i["item"] for i in inv]
+        fuel = next((f for f in ("coal", "charcoal") if f in names), None) or next((n for n in names if n.endswith("_planks") or n.endswith("_log")), None)
+        if not fuel: print("no fuel"); return
+    per = FUEL_ITEMS.get(fuel, 1.5)
+    need = -(-have // per) if per >= 1 else have
+    need = int(max(1, -(-have // per)))
+    fs = [f for f in get("/find?blocks=furnace&r=6&n=3")["clusters"] if f["dist"] <= 4.3]
+    if not fs:
+        r = quiet({"type": "place", "item": "furnace"}, 100); print("placing a furnace:", r.get("result") if r.get("result") != "ok" else last_result())
+        for _ in range(5):
+            fs = [f for f in get("/find?blocks=furnace&r=6&n=3")["clusters"] if f["dist"] <= 4.6]
+            if fs: break
+            quiet({"type": "wait"}, 4)
+        if not fs: print("couldn't place a furnace"); return
+    f = fs[0]["pos"]
+    quiet({"type": "interact", "x": f[0], "y": f[1], "z": f[2]}, 60)
+    c = get("/observe")["self"].get("container") or {}
+    if not c.get("slots"): print("couldn't open the furnace:", last_result()); return
+    click = lambda sl, b=0, m="pickup": quiet({"type": "slot_click", "slot": sl, "button": b, "mode": m}, 3)
+    stacks = lambda name: [q["slot"] for q in (get("/observe")["self"].get("container") or {}).get("slots", []) if q.get("item") == name and q["slot"] > 2]
+    for sl in stacks(item): click(sl); click(0); click(sl)   # (put back what didn't fit)
+    fsl = stacks(fuel)
+    if fsl:
+        click(fsl[0])
+        for _ in range(need): click(1, 1)
+        click(fsl[0])
+    print(f"smelting {have} {item} with {need} {fuel}…")
+    import time
+    for _ in range(60):
+        r = quiet({"type": "wait", "wait": 200}, 200)
+        c = get("/observe")["self"].get("container") or {}
+        inp = [q for q in c.get("slots", []) if q["slot"] == 0 and q.get("item") not in (None, "empty")]
+        if not inp or r.get("woke"): break
+    if r.get("woke"): print("⚠️  woke early:", r["woke"])
+    click(2, 0, "quick_move")
+    quiet({"type": "close_screen"}, 2)
+    print("now:", ", ".join(f"{i['item']}x{i['count']}" for i in get("/observe")["self"]["inventory"]))
 
 NOTE_NAG = 12   # actions without a word of commentary before hc reminds you
 
@@ -308,8 +437,29 @@ def main(a):
         if not x: print('usage: hc note "how it\'s going, what\'s next"'); return
         act({"type": "note", "text": " ".join(x)}, 0)
     elif c == "respawn": act({"type": "respawn"}, 40)
+    elif c == "scan": print(get(f"/scan?r={x[0] if x else 128}").get("text") or "")
+    elif c == "find":
+        import urllib.parse
+        q = f"/find?blocks={urllib.parse.quote(x[0])}&r={x[1] if len(x) > 1 else 128}&n={x[2] if len(x) > 2 else 8}"
+        if len(x) > 4: q += f"&ymin={x[3]}&ymax={x[4]}"
+        o = get(q)
+        if "error" in o: print(o["error"]); return
+        for cl in o["clusters"]:
+            print(f"  {cl['block']} ×{cl['count']} at {cl['pos']}  {cl['dist']} m" + ("" if cl["exposed"] else "  (buried)"))
+        print(f"{o['total_blocks']} blocks in {o['total_clusters']} clusters ({o['searched']})")
+    elif c == "ents":
+        import urllib.parse
+        o = get(f"/ents?r={x[0] if x else 128}&type={urllib.parse.quote(x[1]) if len(x) > 1 else ''}&n=40")
+        if "error" in o: print(o["error"]); return
+        for e in o["entities"]: print(ent_line(e))
+        if not o["entities"]: print("none")
+    elif c == "b": baritone(" ".join(x))
+    elif c == "make": make(x[0], int(x[1]) if len(x) > 1 else 1)
+    elif c == "smelt": smelt(x[0], x[1] if len(x) > 1 else None)
+    elif c == "b-nowait": baritone(" ".join(x), wait=False)
     elif c == "status": print(json.dumps(get("/status"), ensure_ascii=False))
     else: print("unknown command; hc help")
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    try: main(sys.argv[1:])
+    except BrokenPipeError: pass

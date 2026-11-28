@@ -42,7 +42,10 @@ public class HonestClient implements ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register(mc -> {
             // frozen world = paused game: hands off the controls (you can't play from the ESC menu), eyes still work
             // once in the world, start hidden unless asked to show (honest.show): saves power, the agent doesn't need it
-            if (!startVisibilityDone && mc.player != null) { startVisibilityDone = true; if (!Boolean.getBoolean("honest.show")) setShown(false); }
+            if (!startVisibilityDone && mc.player != null) { startVisibilityDone = true; if (!Boolean.getBoolean("honest.show")) setShown(false);
+                // say it out loud, into the record: a cheat-mode game is not an honest one
+                if (Cheat.ON) { Events.note("note", "CHEAT MODE: this agent sees every loaded block and entity and drives a full Baritone");
+                    try { dev.honest.pause.Note.send("[cheat mode] X-ray, exact entities, full Baritone — speedrun"); } catch (Throwable ignored) {} } }
             boolean frozen = mc.level != null && !mc.level.tickRateManager().runsNormally();
             if (mc.level != null) {   // memory and marks belong to the dimension I'm in
                 String dim = mc.level.dimension().identifier().getPath();

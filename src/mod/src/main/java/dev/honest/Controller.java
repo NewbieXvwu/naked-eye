@@ -105,7 +105,12 @@ public final class Controller {
         if (lastAim != null && (Math.abs(Mth.wrapDegrees(pl.getYRot() - lastAim[0])) > 5 || Math.abs(pl.getXRot() - lastAim[1]) > 5)) {
             targetYaw = null; targetPitch = null; flick = null;
         }
-        if (targetYaw != null || targetPitch != null) {
+        if (Cheat.ON && (targetYaw != null || targetPitch != null)) {
+            // cheat mode: no hand to model — the view is simply where it should be, this tick
+            float ty = targetYaw != null ? targetYaw : pl.getYRot(), tp = targetPitch != null ? targetPitch : pl.getXRot();
+            pl.setYRot(pl.getYRot() + Mth.wrapDegrees(ty - pl.getYRot())); pl.setXRot(Mth.clamp(tp, -90f, 90f));
+            targetYaw = null; targetPitch = null; flick = null;
+        } else if (targetYaw != null || targetPitch != null) {
             float ty = targetYaw != null ? targetYaw : pl.getYRot(), tp = targetPitch != null ? targetPitch : pl.getXRot();
             float dy = Mth.wrapDegrees(ty - pl.getYRot()), dp = tp - pl.getXRot();
             double ang = Math.hypot(dy, dp);
@@ -327,7 +332,7 @@ public final class Controller {
     public static boolean click(Minecraft mc, String k) {
         long now = HonestClient.ticks;   // a game second, so the limit means the same at any tick rate
         while (!clickTimes.isEmpty() && now - clickTimes.peekFirst() >= 20) clickTimes.removeFirst();
-        if (clickTimes.size() >= MAX_CPS) return false;
+        if (!Cheat.ON && clickTimes.size() >= MAX_CPS) return false;   // (cheat mode: no hand, no limit)
         clickTimes.addLast(now);
         press(key(mc, k));
         return true;
@@ -346,7 +351,7 @@ public final class Controller {
     }
 
     static final Random RNG = new Random();
-    public static boolean humanAim = true;
+    public static boolean humanAim = !Cheat.ON;   // (cheat mode: no mouse to imitate)
     static Vec3 aimOff;
     static double clampG(double sd) { return Mth.clamp(RNG.nextGaussian() * sd, -0.35, 0.35); }
 
@@ -557,7 +562,7 @@ public final class Controller {
         public String tick(Minecraft mc, LocalPlayer pl) {
             var st = pl.getMainHandItem();
             if (item == null) {
-                if (!st.isEdible()) { holds.remove("use"); return "that is not food: " + Perception.itemName(st); }
+                if (!st.has(net.minecraft.core.component.DataComponents.FOOD)) { holds.remove("use"); return "that is not food: " + Perception.itemName(st); }
                 item = Perception.itemName(st); was = st.getCount();
             }
             if (++t > 80) { holds.remove("use"); return "no bite (still " + st.getCount() + ")"; }
@@ -837,6 +842,7 @@ public final class Controller {
         public String describe() { return "look around"; }
         // three turns: level, then looking down (floors, drops, stairs going down), then up (shafts, ledges)
         public String tick(Minecraft mc, LocalPlayer pl) {
+            if (Cheat.ON) return "done (cheat mode sees everything loaded anyway: hc scan / find / ents)";
             t++;
             int pass = Math.min(2, (t - 1) / 48), u = (t - 1) % 48;
             targetPitch = pass == 0 ? pitch : pass == 1 ? 55f : -40f;
