@@ -262,7 +262,9 @@ public final class Fight implements Controller.Task {
             return null;
         }
         if (shield && (incoming || bz.isOnFire() || charge < 0.9f)) Controller.hold("use", 3); else Controller.release("use");
-        if (hd > 1.2 && d > 2.6) approach(mc, pl, bz, d);
+        // don't chase a blaze across a fortress: the last chase ended 39 m down. Only close in on one that's near
+        if (hd > 1.2 && d > 2.6 && d < 6 && !incoming) approach(mc, pl, bz, d);
+        else if (d >= 6 && t > 200) return end("it keeps its distance (" + Math.round(d) + " m)");
         else if (up > 1.2 && d > 2.9 && pl.onGround() && charge >= 0.9f) Controller.hold("jump", 2);   // it floats just above: jump into reach
         return null;
     }

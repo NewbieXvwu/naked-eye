@@ -33,7 +33,41 @@ public final class Controller {
     public static int trackId = 0; static int trackLost = 0;
     static float[] flick; // {startYaw, startPitch, targetYaw, targetPitch, tick, durationTicks}
     public static final int MAX_CPS = 12;
-    static int lastNoFightNote = -999;                // clicks per second
+    static int lastNoFightNote = -999;
+    static int shieldUntil = -1; static Vec3 shieldFrom; static boolean baritonePaused = false;
+
+    static void shieldReflex(Minecraft mc, LocalPlayer pl) {
+        if (!Perception.itemName(pl.getOffhandItem()).equals("shield") || pl.isDeadOrDying()) return;
+        Vec3 me = pl.getBoundingBox().getCenter(); Entity threat = null; double eta = 99;
+        for (Entity f : mc.level.getEntities(pl, pl.getBoundingBox().inflate(28),
+                x -> x instanceof net.minecraft.world.entity.projectile.Projectile && !(x instanceof net.minecraft.world.entity.projectile.FishingHook))) {
+            Vec3 v = f.position().subtract(f.xo, f.yo, f.zo); double sp = v.length();
+            if (sp < 0.08) continue;   // (lying on the ground, or stuck in a block)
+            Vec3 to = me.subtract(f.position());
+            double along = to.dot(v) / sp; if (along <= 0) continue;   // flying away from me
+            if (f.position().add(v.scale(along / sp)).distanceTo(me) > 1.8) continue;   // it will miss
+            double t = along / sp; if (t < eta) { eta = t; threat = f; }
+        }
+        if (threat != null && eta <= 14) { shieldUntil = HonestClient.ticks + 6; shieldFrom = threat.position().subtract(threat.position().subtract(threat.xo, threat.yo, threat.zo).scale(3)); }
+        boolean up = shieldFrom != null && HonestClient.ticks < shieldUntil;
+        boolean baritoneTask = task instanceof BaritoneBridge.Go || task instanceof BaritoneBridge.Cmd;
+        if (up) {
+            if (baritoneTask && !baritonePaused && BaritoneBridge.present()) { BaritoneBridge.pause(true); baritonePaused = true; }
+            Vec3 d = shieldFrom.subtract(pl.getEyePosition());
+            pl.setYRot((float) Math.toDegrees(Math.atan2(-d.x, d.z)));
+            pl.setXRot(Mth.clamp((float) -Math.toDegrees(Math.atan2(d.y, Math.sqrt(d.x * d.x + d.z * d.z))), -90f, 90f));
+            targetYaw = null; targetPitch = null;
+            if (!(pl.isUsingItem() && pl.getUseItem().is(net.minecraft.world.item.Items.SHIELD))) {
+                if (pl.isUsingItem()) pl.releaseUsingItem();
+                mc.gameMode.useItem(pl, net.minecraft.world.InteractionHand.OFF_HAND);
+            }
+            key(mc, "use").setDown(true); holds.put("use", 2);
+            if (HonestClient.ticks % 40 == 0 || shieldUntil - HonestClient.ticks == 5) Events.note("reflex", "a " + (threat == null ? "projectile" : Perception.entityName(threat)) + " is coming -> shield up");
+        } else if (shieldFrom != null) {   // the danger has passed: shield down, Baritone carries on
+            shieldFrom = null; holds.remove("use"); key(mc, "use").setDown(false); if (pl.isUsingItem()) pl.releaseUsingItem();
+            if (baritonePaused) { BaritoneBridge.pause(false); baritonePaused = false; }
+        }
+    }                // clicks per second
 
     static Float targetYaw, targetPitch;
     static final Map<String, Integer> holds = new HashMap<>();
@@ -290,6 +324,10 @@ public final class Controller {
                 if (lavaPour > 20) lavaPour = 0;
             }
         }
+        // Sixth reflex (cheat mode): a fireball or an arrow is about to hit me -> face it and raise the shield, whatever I'm
+        // doing (Baritone is paused for those ticks: it would turn me back toward the path). A blocked fireball doesn't
+        // set me on fire — and fire is what killed me twice by the fortress (it ignores armour).
+        if (Cheat.ON) shieldReflex(mc, pl);
         if (task != null && task.ownsInput()) { drowning = false; return; }
         // The one default reflex: head underwater and losing air with nothing else steering -> swim up.
         // A slow brain polling every few seconds otherwise drowns while thinking. Off via act {type:"reflex", anti_drown:false}.

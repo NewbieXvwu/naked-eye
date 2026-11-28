@@ -52,6 +52,7 @@ CHEAT MODE only (HONEST_CHEAT=1 ./start.sh — the game is a speedrun, and I kno
   hc smelt ITEM [fuel]        smelt the whole stack at a furnace in reach (places the one I carry), just enough fuel
   hc box X1 Y1 Z1 X2 Y2 Z2     every block in a box (≤32 a side), one layer per y, north up — read a structure, plan a build
   hc seek BLOCK[,B] HEADING [dist]  travel that way (north/sw/…) 48 blocks a leg until one of the blocks is loaded
+  hc hunt TYPE[,T] [n]        kill n of those animals, nearest first (Baritone to each, fight, pick up the drops)
   hc stash ITEM,ITEM          put those stacks into a chest in reach (dropped items get picked right back up)
   hc b-nowait CMD...          start it and return at once
   hc slot N | hc tohotbar INVSLOT HOTBAR | hc craft ITEM [n] | hc close | hc stop | hc wait TICKS | hc say TEXT | hc respawn
@@ -201,11 +202,17 @@ def make(item, n):
         inv = {i["item"]: i for i in get("/observe")["self"]["inventory"]}
         if "crafting_table" not in inv:
             planks = next((k for k in inv if k.endswith("_planks") and inv[k]["count"] >= 4), None)
+            log = next((k for k in inv if k.endswith("_log") or k.endswith("_stem")), None)
+            if not planks and log:   # (a log makes four)
+                quiet({"type": "craft", "item": log.replace("_log", "_planks").replace("_stem", "_planks"), "count": 1}, 100)
+                inv = {i["item"]: i for i in get("/observe")["self"]["inventory"]}
+                planks = next((k for k in inv if k.endswith("_planks") and inv[k]["count"] >= 4), None)
             if not planks: print("no crafting table, and not 4 planks to make one"); return
             quiet({"type": "craft", "item": "crafting_table", "count": 1}, 100)
+        if get("/observe")["self"].get("open_screen"): quiet({"type": "close_screen"}, 4)
         r = quiet({"type": "place", "item": "crafting_table"}, 100)
         print("placing a table:", r.get("result") if r.get("result") != "ok" else last_result())
-        for _ in range(5):   # (the block shows up once the server confirms it)
+        for _ in range(20):   # (the block shows up once the server confirms it)
             tables = [t for t in get("/find?blocks=crafting_table&r=6&n=3")["clusters"] if t["dist"] <= 4.6]
             if tables: break
             quiet({"type": "wait"}, 4)
@@ -232,7 +239,10 @@ def smelt(item, fuel=None):
     need = -(-have // per) if per >= 1 else have
     need = int(max(1, -(-have // per)))
     fs = [f for f in get("/find?blocks=furnace&r=6&n=3")["clusters"] if f["dist"] <= 4.3]
+    if not fs and not any(i["item"] == "furnace" for i in get("/observe")["self"]["inventory"]):
+        make("furnace", 1)   # (8 cobblestone, at a table)
     if not fs:
+        if get("/observe")["self"].get("open_screen"): quiet({"type": "close_screen"}, 4)
         r = quiet({"type": "place", "item": "furnace"}, 100); print("placing a furnace:", r.get("result") if r.get("result") != "ok" else last_result())
         for _ in range(5):
             fs = [f for f in get("/find?blocks=furnace&r=6&n=3")["clusters"] if f["dist"] <= 4.6]
@@ -298,6 +308,32 @@ def seek(blocks, heading, dist, step=48):
         if r.get("woke"): print("⚠️  woke early:", r["woke"]); return False
         if "arrived" not in lr and math.hypot(s["pos"][0] - gx, s["pos"][2] - gz) > step * 0.6: print("stuck: stopping"); return False
     print("not found within", dist); return False
+
+def hunt(types, n):
+    """kill n animals of these types (nearest first): Baritone to it, fight, pick up the drops"""
+    import urllib.parse
+    for k in range(n):
+        es = get(f"/ents?r=200&type={urllib.parse.quote(types)}&n=5")["entities"]
+        es = [e for e in es if not e.get("baby") and e.get("hp", 1) > 0]
+        if not es: print("no more", types); break
+        e = es[0]; print(f"→ #{e['id']} {e['type']} {e['dist']} m")
+        if e["dist"] > 3:
+            r = post({"type": "baritone", "cmd": f"follow entity {e['type']}" if False else f"goto {int(e['pos'][0])} {int(e['pos'][1])} {int(e['pos'][2])}", "wait": 1200, "resume": True, "cursor": cursor()})
+            while not r.get("woke") and get("/status")["task"] != "idle":
+                r = post({"type": "wait", "wait": 1200, "until_idle": True, "cursor": cursor()})
+            if r.get("woke") and "message" not in r["woke"]: print("⚠️  woke early:", r["woke"]); return
+        r = post({"type": "fight", "id": e["id"], "crit": False, "stop_hp": 8, "wait": 600, "resume": True, "cursor": cursor()})
+        while get("/status")["task"].startswith("fight") and get("/observe")["self"]["health"] >= 8:
+            r = post({"type": "wait", "wait": 100, "until_idle": True, "cursor": cursor()})
+        print("  ", last_result().split("-> ")[-1])
+        import math, time
+        last = next((q for q in get(f"/ents?r=40&type={e['type']}&n=40")["entities"] if q["id"] == e["id"]), None)
+        at = last["pos"] if last else get("/observe")["self"]["pos"]
+        quiet({"type": "wait"}, 10)   # (the drops pop out a moment after it dies)
+        drops = [d for d in get("/ents?r=48&type=item&n=40")["entities"] if math.dist(d["pos"], at) < 6 or d["dist"] < 5]
+        for d in drops:
+            r = post({"type": "baritone", "cmd": f"goto {int(d['pos'][0])} {int(round(d['pos'][1]))} {int(d['pos'][2])}", "wait": 200, "resume": True, "cursor": cursor()})
+    fmt(get(f"/observe?cursor={cursor()}"))
 
 NOTE_NAG = 12   # actions without a word of commentary before hc reminds you
 
@@ -512,6 +548,7 @@ def main(a):
             if set(l["rows"]) <= set(".\n"): continue
             print(f"y={l['y']}"); print(l["rows"], end="")
     elif c == "seek": seek(x[0].split(","), x[1], float(x[2]) if len(x) > 2 else 400)
+    elif c == "hunt": hunt(x[0], int(x[1]) if len(x) > 1 else 1)
     elif c == "stash": stash(x[0].split(","))
     elif c == "smelt": smelt(x[0], x[1] if len(x) > 1 else None)
     elif c == "b-nowait": baritone(" ".join(x), wait=False)

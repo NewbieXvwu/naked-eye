@@ -82,7 +82,7 @@ public final class BaritoneBridge {
 
     /** a Baritone command (the ones you'd type after '#'), run as a task until Baritone has nothing left to do */
     public static final class Cmd implements Controller.Task {
-        final String cmd; final int limit; final float stopHp; int t = 0, idle = 0; float startHp;
+        final String cmd; final int limit; final float stopHp; int t = 0, idle = 0, sinceChange = 0, lastInv = 0; float startHp; net.minecraft.world.phys.Vec3 lastPos;
         public Cmd(String cmd, int limitTicks, float stopHp) { this.cmd = cmd; this.limit = limitTicks; this.stopHp = stopHp; }
         public String describe() { return "baritone " + cmd; }
         public boolean ownsInput() { return true; }
@@ -95,12 +95,20 @@ public final class BaritoneBridge {
             if (pl.isDeadOrDying()) { cancel(mc); return "died"; }
             if (pl.getHealth() <= stopHp && pl.getHealth() < startHp) { cancel(mc); return String.format("stopped: HP %.0f (stop at %.0f)", pl.getHealth(), stopHp); }
             if (limit > 0 && t > limit) { cancel(mc); return "time limit (" + limit + " ticks) — " + lastMessage; }
+            // stuck: Baritone "busy" but nothing changes (its item saver refused my only, worn-out pickaxe and it
+            // circled for 10 real minutes, half a game hour). No move and no inventory change for 600 ticks = give up
+            int inv = 0; for (int i = 0; i < 36; i++) inv = inv * 31 + pl.getInventory().getItem(i).getCount() * 7 + net.minecraft.core.registries.BuiltInRegistries.ITEM.getId(pl.getInventory().getItem(i).getItem());
+            if (lastPos == null || pl.position().distanceTo(lastPos) > 2 || inv != lastInv) { lastPos = pl.position(); lastInv = inv; sinceChange = 0; }
+            else if (++sinceChange > 600) { cancel(mc); return "stuck: no progress for 600 ticks (worn-out tool? no path?) — " + lastMessage; }
             if (active()) { idle = 0; return null; }
             if (++idle < 10) return null;   // (between two paths Baritone is briefly idle)
             return "done" + (lastMessage.isEmpty() ? "" : ": " + lastMessage);
         }
         public void cancel(Minecraft mc) { BaritoneBridge.cancel(); }
     }
+
+    /** hold Baritone still for a moment (the shield reflex): its own pause/resume commands */
+    public static void pause(boolean on) { try { b().getCommandManager().execute(on ? "pause" : "resume"); } catch (Throwable ignored) {} }
 
     static boolean active() {
         IBaritone b = b();

@@ -44,12 +44,16 @@ def main():
         if s["health"] < 8: print(f"stopping: HP {s['health']}"); return 1
         if s.get("on_fire") and s["health"] < 9: print("on fire and hurt: stopping"); return 1
         if s["health"] < 12 and eat(s): continue
-        ents = get("/ents?r=14&type=blaze&n=5")["entities"]
+        ents = get("/ents?r=10&type=blaze&n=5")["entities"]
         ents = [e for e in ents if e.get("hp", 0) > 0]
         if not ents:
             idle += 1
-            if idle > 30: print("no blaze for a while"); return 1
-            act({"type": "wait", "wait": 40}); continue
+            if idle > 60: print("no blaze for a while"); return 1
+            # shield up toward the nearest blaze while waiting for one to come close
+            far = get("/ents?r=24&type=blaze&n=1")["entities"]
+            if far: act({"type": "look_at", "x": far[0]["pos"][0], "y": far[0]["pos"][1] + 1, "z": far[0]["pos"][2], "wait": 1}); act({"type": "hold", "keys": ["use"], "ticks": 40, "wait": 40})
+            else: act({"type": "wait", "wait": 40})
+            continue
         idle = 0
         b = ents[0]
         r = act({"type": "fight", "id": b["id"], "crit": True, "stop_hp": 8, "wait": 400})
